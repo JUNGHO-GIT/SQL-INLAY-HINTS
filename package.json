@@ -4,7 +4,7 @@
   "description": "Inlay Hints for SQL INSERT INTO Statements in VSCode",
   "publisher": "JUNGHO",
   "license": "Apache-2.0",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "./out/extension.js",
   "icon": "logo.webp",
   "repository": {

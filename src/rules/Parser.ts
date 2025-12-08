@@ -30,16 +30,27 @@ export const parseRowValues = (rowStr: string): string[] => {
 	let stringChar = ``;
 	let parenDepth = 0;
 
-	for (const char of rowStr) {
-		const isStringDelim = (char === `'` || char === `"`) && !inString;
-		const isStringEnd = inString && char === stringChar;
+	for (let i = 0; i < rowStr.length; i++) {
+		const char = rowStr[i];
+		const prevChar = i > 0 ? rowStr[i - 1] : ``;
+		const isEscaped = prevChar === `\\` || (inString && stringChar === char && rowStr[i + 1] === char);
+
+		// 이스케이프된 따옴표 처리 ('' 또는 "")
+		if (inString && char === stringChar && rowStr[i + 1] === char) {
+			current += char + rowStr[i + 1];
+			i++;
+			continue;
+		}
+
+		const isStringStart = (char === `'` || char === `"`) && !inString;
+		const isStringEnd = inString && char === stringChar && !isEscaped;
 		const isComma = char === `,` && !inString && parenDepth === 0;
 
 		if (isComma) {
 			values.push(current.trim());
 			current = ``;
 		}
-		else if (isStringDelim) {
+		else if (isStringStart) {
 			inString = true;
 			stringChar = char;
 			current += char;

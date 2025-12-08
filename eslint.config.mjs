@@ -5,7 +5,9 @@
  * @since 2025-12-07
  */
 
-import { defineConfig } from "eslint/config";
+import {
+	defineConfig,
+} from "eslint/config";
 import js from "@eslint/js";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
@@ -364,7 +366,7 @@ const JS_RULES = {
 		4,
 	],
 	"max-len": [
-		`off`,
+		`warn`,
 		{
 			"code": 200,
 			"ignoreUrls": true,

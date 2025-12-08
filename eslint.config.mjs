@@ -364,7 +364,7 @@ const JS_RULES = {
 		4,
 	],
 	"max-len": [
-		`warn`,
+		`off`,
 		{
 			"code": 200,
 			"ignoreUrls": true,

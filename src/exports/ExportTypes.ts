@@ -1,11 +1,13 @@
 /**
  * @file ExportTypes.ts
- * @since 2025-11-28
+ * @description 관련 타입 정의
+ * @author Jungho
+ * @since 2025-12-8
  */
 
 // -------------------------------------------------------------------------------
 export {
 	type ParsedInsert,
 	type ValueRow,
-	type ColumnMapping,
+	type ParsedRowValues,
 } from "@type/sql";

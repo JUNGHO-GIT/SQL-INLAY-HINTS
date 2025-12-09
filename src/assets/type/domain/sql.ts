@@ -10,6 +10,7 @@ export interface ValueRow {
 	values: string[];
 	position: number;
 	valuePositions: number[];
+	valueEndPositions: number[];
 }
 
 // 2. 파싱된 INSERT 문 전체 구조 -----------------------------------------------------------------
@@ -22,4 +23,5 @@ export interface ParsedInsert {
 export interface ParsedRowValues {
 	values: string[];
 	positions: number[];
+	endPositions: number[];
 }

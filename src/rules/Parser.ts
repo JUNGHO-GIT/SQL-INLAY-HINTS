@@ -5,7 +5,7 @@
  * @since 2025-12-8
  */
 
-import type { ParsedInsert, ValueRow, ParsedRowValues } from "@type/sql";
+import type { ParsedInsert, ValueRow, ParsedRowValues } from "@exportTypes";
 
 // -------------------------------------------------------------------------------------------------
 const INSERT_VALUES_REGEX = /INSERT\s+INTO\s+["`]?[\w.]+["`]?\s*\(([\s\S]*?)\)\s*VALUES\s*/gi;
@@ -23,8 +23,10 @@ export const parseColumns = (columnsStr: string): string[] => {
 export const parseRowValues = (rowStr: string): ParsedRowValues => {
 	const values: string[] = [];
 	const positions: number[] = [];
+	const endPositions: number[] = [];
 	let current = ``;
 	let currentStart = -1;
+	let currentEnd = -1;
 	let inString = false;
 	let stringChar = ``;
 	let parenDepth = 0;
@@ -35,6 +37,7 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 		// SQL 표준 이스케이프 처리 ('' 또는 "")
 		if (inString && char === stringChar && rowStr[i + 1] === char) {
 			current += char + rowStr[i + 1];
+			currentEnd = i + 1;
 			i++;
 			continue;
 		}
@@ -46,22 +49,27 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 		if (isComma) {
 			values.push(current.trim());
 			positions.push(currentStart);
+			endPositions.push(currentEnd + 1);
 			current = ``;
 			currentStart = -1;
+			currentEnd = -1;
 		}
 		else if (isStringStart) {
 			currentStart === -1 && (currentStart = i);
 			inString = true;
 			stringChar = char;
 			current += char;
+			currentEnd = i;
 		}
 		else if (isStringEnd) {
 			inString = false;
 			stringChar = ``;
 			current += char;
+			currentEnd = i;
 		}
 		else {
 			currentStart === -1 && char.trim() && (currentStart = i);
+			char.trim() && (currentEnd = i);
 			!inString && char === `(` && parenDepth++;
 			!inString && char === `)` && parenDepth--;
 			current += char;
@@ -71,11 +79,13 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 	if (current.trim()) {
 		values.push(current.trim());
 		positions.push(currentStart);
+		endPositions.push(currentEnd + 1);
 	}
 
 	const rs: ParsedRowValues = {
 		values,
 		positions,
+		endPositions,
 	};
 	return rs;
 };
@@ -84,8 +94,10 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 	const values: string[] = [];
 	const positions: number[] = [];
+	const endPositions: number[] = [];
 	let current = ``;
 	let currentStart = -1;
+	let currentEnd = -1;
 	let inString = false;
 	let stringChar = ``;
 	let parenDepth = 0;
@@ -96,6 +108,7 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 		// SQL 표준 이스케이프 처리
 		if (inString && char === stringChar && selectStr[i + 1] === char) {
 			current += char + selectStr[i + 1];
+			currentEnd = i + 1;
 			i++;
 			continue;
 		}
@@ -107,22 +120,27 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 		if (isComma) {
 			values.push(current.trim());
 			positions.push(currentStart);
+			endPositions.push(currentEnd + 1);
 			current = ``;
 			currentStart = -1;
+			currentEnd = -1;
 		}
 		else if (isStringStart) {
 			currentStart === -1 && (currentStart = i);
 			inString = true;
 			stringChar = char;
 			current += char;
+			currentEnd = i;
 		}
 		else if (isStringEnd) {
 			inString = false;
 			stringChar = ``;
 			current += char;
+			currentEnd = i;
 		}
 		else {
 			currentStart === -1 && char.trim() && (currentStart = i);
+			char.trim() && (currentEnd = i);
 			!inString && char === `(` && parenDepth++;
 			!inString && char === `)` && parenDepth--;
 			current += char;
@@ -132,11 +150,13 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 	if (current.trim()) {
 		values.push(current.trim());
 		positions.push(currentStart);
+		endPositions.push(currentEnd + 1);
 	}
 
 	const rs: ParsedRowValues = {
 		values,
 		positions,
+		endPositions,
 	};
 	return rs;
 };
@@ -184,6 +204,7 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
 						"values": parsed.values,
 						"position": rowStartPos,
 						"valuePositions": parsed.positions.map((p) => rowStartPos + p),
+						"valueEndPositions": parsed.endPositions.map((p) => rowStartPos + p),
 					});
 					currentRowStart = -1;
 				}
@@ -282,7 +303,9 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
 
 		const valueRows: ValueRow[] = parsed.values.map((value, i) => {
 			const relativePos = parsed.positions[i];
+			const relativeEndPos = parsed.endPositions[i];
 			const absolutePos = relativePos >= 0 ? selectContentStart + relativePos : -1;
+			const absoluteEndPos = relativeEndPos >= 0 ? selectContentStart + relativeEndPos : -1;
 			const rs: ValueRow = {
 				"values": [
 					value,
@@ -290,6 +313,9 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
 				"position": absolutePos,
 				"valuePositions": [
 					absolutePos,
+				],
+				"valueEndPositions": [
+					absoluteEndPos,
 				],
 			};
 			return rs;

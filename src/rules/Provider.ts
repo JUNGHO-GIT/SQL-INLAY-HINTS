@@ -53,9 +53,7 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
 				}
 				const position = document.positionAt(valuePos);
 				const hint = new vscode.InlayHint(
-					position,
-					`${column}: `,
-					vscode.InlayHintKind.Parameter
+					position, `${column}: `, vscode.InlayHintKind.Parameter
 				);
 				hint.paddingRight = true;
 				hints.push(hint);
@@ -76,9 +74,7 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
 			}
 			const position = document.positionAt(valuePos);
 			const hint = new vscode.InlayHint(
-				position,
-				`${parsed.columns[i]}: `,
-				vscode.InlayHintKind.Parameter
+				position, `${parsed.columns[i]}: `, vscode.InlayHintKind.Parameter
 			);
 			hint.paddingRight = true;
 			hints.push(hint);

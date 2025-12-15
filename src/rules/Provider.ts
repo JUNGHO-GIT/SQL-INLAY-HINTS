@@ -93,8 +93,8 @@ const getConfig = <T>(key: string, defaultValue: T): T => {
 const registerSqlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
 	const rs = vscode.languages.registerInlayHintsProvider(
 		{
-			"scheme": `file`,
-			"language": `sql`,
+			scheme: `file`,
+			language: `sql`,
 		},
 		provider
 	);
@@ -105,8 +105,8 @@ const registerSqlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disp
 const registerXmlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
 	const rs = vscode.languages.registerInlayHintsProvider(
 		{
-			"scheme": `file`,
-			"language": `xml`,
+			scheme: `file`,
+			language: `xml`,
 		},
 		provider
 	);

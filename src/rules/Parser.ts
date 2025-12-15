@@ -8,14 +8,14 @@
 import type { ParsedInsert, ValueRow, ParsedRowValues } from "@exportTypes";
 
 // -------------------------------------------------------------------------------------------------
-const INSERT_VALUES_REGEX = /INSERT\s+INTO\s+["`]?[\w.]+["`]?\s*\(([\s\S]*?)\)\s*VALUES\s*/gi;
-const INSERT_SELECT_REGEX = /INSERT\s+INTO\s+["`]?[\w.]+["`]?\s*\(([\s\S]*?)\)\s*SELECT\s+/gi;
+const INSERT_VALUES_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
+const INSERT_SELECT_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*select\s+/gi;
 
 // 1. 컬럼 문자열 파싱 ---------------------------------------------------------------------------
 export const parseColumns = (columnsStr: string): string[] => {
 	const rs = columnsStr
 		.split(`,`)
-		.map((col) => col.trim().replace(/^["`]|["`]$/g, ``));
+		.map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
 	return rs;
 };
 
@@ -83,9 +83,9 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 	}
 
 	const rs: ParsedRowValues = {
-		values,
-		positions,
-		endPositions,
+		values: values,
+		positions: positions,
+		endPositions: endPositions,
 	};
 	return rs;
 };
@@ -154,9 +154,9 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 	}
 
 	const rs: ParsedRowValues = {
-		values,
-		positions,
-		endPositions,
+		values: values,
+		positions: positions,
+		endPositions: endPositions,
 	};
 	return rs;
 };
@@ -197,20 +197,20 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
 			else if (char === `)`) {
 				parenDepth--;
 				if (parenDepth === 0 && currentRowStart !== -1) {
-					const rowContent = text.substring(currentRowStart + 1, pos);
+					const rowContent = text.slice(currentRowStart + 1, pos);
 					const parsed = parseRowValues(rowContent);
 					const rowStartPos = currentRowStart + 1;
 					valueRows.push({
-						"values": parsed.values,
-						"position": rowStartPos,
-						"valuePositions": parsed.positions.map((p) => rowStartPos + p),
-						"valueEndPositions": parsed.endPositions.map((p) => rowStartPos + p),
+						values: parsed.values,
+						position: rowStartPos,
+						valuePositions: parsed.positions.map((p) => rowStartPos + p),
+						valueEndPositions: parsed.endPositions.map((p) => rowStartPos + p),
 					});
 					currentRowStart = -1;
 				}
 			}
 			else if (parenDepth === 0) {
-				const remaining = text.substring(pos).toUpperCase();
+				const remaining = text.slice(Math.max(0, pos)).toUpperCase();
 				if (remaining.startsWith(`INSERT`) || char === `;`) {
 					break;
 				}
@@ -233,8 +233,8 @@ export const findInsertValues = function* (text: string): Generator<ParsedInsert
 		const valueRows = parseValuesBlock(text, valuesStartIdx);
 
 		yield {
-			"columns": parseColumns(columnsStr),
-			"valueRows": valueRows,
+			columns: parseColumns(columnsStr),
+			valueRows: valueRows,
 		};
 	}
 };
@@ -274,8 +274,8 @@ const extractSelectColumns = (text: string, startPos: number): string => {
 			}
 			// parenDepth가 0일 때만 FROM 키워드 확인
 			else if (parenDepth === 0) {
-				const remaining = text.substring(pos, pos + 10).toUpperCase();
-				if (remaining.startsWith(`FROM`) && /^FROM[\s(]/i.test(remaining)) {
+				const remaining = text.slice(pos, pos + 10).toUpperCase();
+				if (remaining.startsWith(`FROM`) && /^from[\s(]/i.test(remaining)) {
 					break;
 				}
 			}
@@ -283,7 +283,7 @@ const extractSelectColumns = (text: string, startPos: number): string => {
 		pos++;
 	}
 
-	const rs = text.substring(startPos, pos);
+	const rs = text.slice(startPos, pos);
 	return rs;
 };
 
@@ -307,24 +307,18 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
 			const absolutePos = relativePos >= 0 ? selectContentStart + relativePos : -1;
 			const absoluteEndPos = relativeEndPos >= 0 ? selectContentStart + relativeEndPos : -1;
 			const rs: ValueRow = {
-				"values": [
-					value,
-				],
-				"position": absolutePos,
-				"valuePositions": [
-					absolutePos,
-				],
-				"valueEndPositions": [
-					absoluteEndPos,
-				],
+				values: [value],
+				position: absolutePos,
+				valuePositions: [absolutePos],
+				valueEndPositions: [absoluteEndPos],
 			};
 			return rs;
 		});
 
 		if (valueRows.length === columns.length) {
 			yield {
-				"columns": columns,
-				"valueRows": valueRows,
+				columns: columns,
+				valueRows: valueRows,
 			};
 		}
 	}

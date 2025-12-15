@@ -1,8 +1,13 @@
-// assets/scripts/modules.ts
+/**
+ * @file modules.ts
+ * @description foo
+ * @author Jungho
+ * @since 2025-12-15
+ */
 
 import { logger } from "@exportScripts";
-import _fs from "fs";
-import _path from "path";
+import _fs from "node:fs";
+import _path from "node:path";
 
 // -----------------------------------------------------------------------------------------
 const _moduleCache: Map<string, any> = new Map();
@@ -26,7 +31,7 @@ const resolveModulePath = (specifier: string) => {
 			const mainFile = packageJson.main ? packageJson.main : packageJson.exports?.default ? packageJson.exports.default : `index.js`;
 			return _path.join(basePath, mainFile);
 		}
-		catch (err) {
+		catch {
 			return _path.join(basePath, `index.js`);
 		}
 	}
@@ -44,19 +49,19 @@ const dynamicImport = async (specifier: string) => {
 		const requiredModule = require(resolvedPath);
 		return resolveModule(requiredModule);
 	}
-	catch (err: unknown) {
+	catch {
 		try {
-			const fileUrl = _path.isAbsolute(resolvedPath) ? `file:///${resolvedPath.replace(/\\/g, `/`)}` : resolvedPath;
+			const fileUrl = _path.isAbsolute(resolvedPath) ? `file:///${resolvedPath.replaceAll(`\\`, `/`)}` : resolvedPath;
 			const moduleResult = await import(fileUrl);
 			return resolveModule(moduleResult);
 		}
-		catch (importErr: unknown) {
+		catch {
 			try {
 				const fallbackModule = require(specifier);
 				return resolveModule(fallbackModule);
 			}
-			catch (fallbackErr: unknown) {
-				logger(`error`, `dynamicImport - all attempts failed for ${specifier}: ${fallbackErr.message}`);
+			catch (error: unknown) {
+				logger(`error`, `dynamicImport - all attempts failed for ${specifier}: ${error.message}`);
 				return null;
 			}
 		}

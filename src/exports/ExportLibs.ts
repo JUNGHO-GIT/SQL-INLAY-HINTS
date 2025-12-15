@@ -6,19 +6,8 @@
  */
 
 // -----------------------------------------------------------------------------------------
-import _vscode from "vscode";
-import _fs from "fs";
-import _path from "path";
-import { TextDecoder as _TextDecoder } from "util";
-import { setExtensionPath as _setExtensionPath } from "@scripts/modules";
-import { getModuleWithCache as _getModuleWithCache } from "@scripts/modules";
-
-// -----------------------------------------------------------------------------------------
-export { _vscode as vscode };
-export { _fs as fs };
-export { _path as path };
-export { _TextDecoder as TextDecoder };
-
-// -----------------------------------------------------------------------------------------
-export { _setExtensionPath as setExtensionPath };
-export { _getModuleWithCache as getModuleWithCache };
+export { default as vscode } from "vscode";
+export { default as fs } from "node:fs";
+export { default as path } from "node:path";
+export { TextDecoder } from "node:util";
+export { setExtensionPath, getModuleWithCache } from "@scripts/modules";

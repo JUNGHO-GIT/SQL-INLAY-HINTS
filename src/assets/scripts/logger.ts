@@ -10,12 +10,12 @@ import { vscode } from "@exportLibs";
 // -------------------------------------------------------------------------------------------------
 const MAIN = `SQL-Inlay-Hints`;
 const logLevelMap = {
-	"off": 0,
-	"debug": 1,
-	"info": 2,
-	"hint": 3,
-	"warn": 4,
-	"error": 5,
+	off: 0,
+	debug: 1,
+	info: 2,
+	hint: 3,
+	warn: 4,
+	error: 5,
 };
 let outputChannel: vscode.OutputChannel | null = null;
 
@@ -33,7 +33,7 @@ const appendOutput = (levelKey: keyof typeof logLevelMap, msg: string): void => 
 };
 
 // -------------------------------------------------------------------------------------------------
-const formatLog = (text = ``): string => text.trim().replace(/^\s+/gm, ``);
+const formatLog = (text = ``): string => text.trim().replaceAll(/^\s+/gm, ``);
 
 // -------------------------------------------------------------------------------------------------
 export const logger = (
@@ -41,37 +41,37 @@ export const logger = (
 	value: string
 ): void => {
 	const config = {
-		"line": {
-			"str": `-----------------------------------------`,
-			"color": `\u001b[38;2;255;162;0m`,
+		line: {
+			str: `-----------------------------------------`,
+			color: `\u001B[38;2;255;162;0m`,
 		},
-		"title": {
-			"str": `[${MAIN}]`,
-			"color": `\u001b[38;2;78;201;176m`,
+		title: {
+			str: `[${MAIN}]`,
+			color: `\u001B[38;2;78;201;176m`,
 		},
-		"debug": {
-			"str": `[DEBUG]`,
-			"color": `\u001b[38;5;141m`,
+		debug: {
+			str: `[DEBUG]`,
+			color: `\u001B[38;5;141m`,
 		},
-		"info": {
-			"str": `[INFO]`,
-			"color": `\u001b[38;5;46m`,
+		info: {
+			str: `[INFO]`,
+			color: `\u001B[38;5;46m`,
 		},
-		"hint": {
-			"str": `[HINT]`,
-			"color": `\u001b[38;5;39m`,
+		hint: {
+			str: `[HINT]`,
+			color: `\u001B[38;5;39m`,
 		},
-		"warn": {
-			"str": `[WARN]`,
-			"color": `\u001b[38;5;214m`,
+		warn: {
+			str: `[WARN]`,
+			color: `\u001B[38;5;214m`,
 		},
-		"error": {
-			"str": `[ERROR]`,
-			"color": `\u001b[38;5;196m`,
+		error: {
+			str: `[ERROR]`,
+			color: `\u001B[38;5;196m`,
 		},
-		"reset": {
-			"str": ``,
-			"color": `\u001b[0m`,
+		reset: {
+			str: ``,
+			color: `\u001B[0m`,
 		},
 	};
 	const separator = `${config.reset.color}${config.line.color}${config.line.str}${config.reset.color}`;
@@ -111,5 +111,5 @@ export const logger = (
 
 // -------------------------------------------------------------------------------------------------
 export const initLogger = (): void => {
-	!outputChannel ? outputChannel = vscode.window.createOutputChannel(MAIN) : null;
+	outputChannel ??= vscode.window.createOutputChannel(MAIN);
 };

@@ -25,15 +25,9 @@ const DANGER_KEYWORDS = (
 	`DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE`
 );
 
-// 3. SQL 주석 패턴 (사용자 테마 comment 색상) ---------------------------------------------------
-const COMMENT_PATTERN = (
-	`<!--[\\s\\S]*?-->`
-);
-
-// 3-1. 허용되지 않는 주석 패턴(오류 표시) -------------------------------------------------------
-const INVALID_COMMENT_PATTERN = (
-	`--[^\\r\\n]*|\\/\\*[\\s\\S]*?\\*\\/`
-);
+// 3. 주석 패턴 ---------------------------------------------------------------------------------
+const XML_COMMENT_PATTERN = (`<!--[\\s\\S]*?-->`);
+const SQL_COMMENT_PATTERN = (`--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`);
 
 // 4. SQL 문자열/숫자 패턴 ---------------------------------------------------------------------
 // XML 속성 값(예: id="x")에 영향을 줄이기 위해 문자열은 단일 인용부호만 처리
@@ -52,14 +46,6 @@ const createDecorationType = (color: string | vscode.ThemeColor, bold = false): 
 	return rs;
 };
 
-const createErrorDecorationType = (): vscode.TextEditorDecorationType => {
-	const rs = vscode.window.createTextEditorDecorationType({
-		color: `#F44747`,
-		textDecoration: `underline wavy #F44747`,
-	});
-	return rs;
-};
-
 // -------------------------------------------------------------------------------------------------
 let keywordGroups: KeywordGroup[] = [];
 let activeEditor: vscode.TextEditor | undefined;
@@ -73,27 +59,29 @@ const getConfig = <T>(key: string, defaultValue: T): T => {
 };
 
 // 5. 데코레이터 초기화 --------------------------------------------------------------------------
+let xmlKeywordGroups: KeywordGroup[] = [];
+let sqlKeywordGroups: KeywordGroup[] = [];
+
 const initDecorators = (): void => {
 	keywordGroups.forEach((group) => {
+		group.decorationType.dispose();
+	});
+	xmlKeywordGroups.forEach((group) => {
+		group.decorationType.dispose();
+	});
+	sqlKeywordGroups.forEach((group) => {
 		group.decorationType.dispose();
 	});
 
 	// 대문자만 매칭하기 위해 'g' 플래그만 사용 (i 플래그 제거)
 	// \b 단어 경계로 완전한 단어만 매칭
 	const commentColor = getConfig<string>(`commentColor`, `#ffff00`);
+	const commentColor2 = getConfig<string>(`commentColor2`, `#5d9b5d`);
 	const stringColor = getConfig<string>(`stringColor`, `#CE9178`);
 	const numberColor = getConfig<string>(`numberColor`, `#B5CEA8`);
+
+	// 공통 키워드 그룹
 	keywordGroups = [
-		{
-			pattern: new RegExp(COMMENT_PATTERN, `g`),
-			decorationType: createDecorationType(commentColor),
-		},
-		{
-			pattern: new RegExp(INVALID_COMMENT_PATTERN, `g`),
-			decorationType: createErrorDecorationType(),
-			useExclusions: true,
-			exclusionKind: `invalidComment`,
-		},
 		{
 			pattern: new RegExp(`\\b(${DANGER_KEYWORDS})\\b`, `g`),
 			decorationType: createDecorationType(`#F44747`, true),
@@ -119,6 +107,34 @@ const initDecorators = (): void => {
 			exclusionKind: `standard`,
 		},
 	];
+
+	// XML 전용: <!-- --> 노란색, /* */ 와 -- 는 어두운 녹색
+	xmlKeywordGroups = [
+		{
+			pattern: new RegExp(XML_COMMENT_PATTERN, `g`),
+			decorationType: createDecorationType(commentColor),
+		},
+		{
+			pattern: new RegExp(SQL_COMMENT_PATTERN, `g`),
+			decorationType: createDecorationType(commentColor2),
+			useExclusions: true,
+			exclusionKind: `invalidComment`,
+		},
+	];
+
+	// SQL 전용: /* */ 와 -- 만 노란색, <!-- --> 는 녹색 (허용 안 함)
+	sqlKeywordGroups = [
+		{
+			pattern: new RegExp(SQL_COMMENT_PATTERN, `g`),
+			decorationType: createDecorationType(commentColor),
+			useExclusions: true,
+			exclusionKind: `invalidComment`,
+		},
+		{
+			pattern: new RegExp(XML_COMMENT_PATTERN, `g`),
+			decorationType: createDecorationType(commentColor2),
+		},
+	];
 };
 
 // 6. 제외 범위 생성 (주석 + XML 태그) -----------------------------------------------------------
@@ -126,10 +142,19 @@ type ExclusionRange = { start: number; end: number };
 
 const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
 	const ranges: ExclusionRange[] = [];
-
-	const commentRegex = new RegExp(COMMENT_PATTERN, `g`);
 	let match: RegExpExecArray | null;
-	while ((match = commentRegex.exec(text)) !== null) {
+
+	// XML: <!-- --> 주석 제외
+	if (lang === `xml`) {
+		const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
+		while ((match = xmlCommentRegex.exec(text)) !== null) {
+			ranges.push({ start: match.index, end: match.index + match[0].length });
+		}
+	}
+
+	// SQL/XML 공통: /* */ 와 -- 주석 제외
+	const sqlCommentRegex = new RegExp(SQL_COMMENT_PATTERN, `g`);
+	while ((match = sqlCommentRegex.exec(text)) !== null) {
 		ranges.push({ start: match.index, end: match.index + match[0].length });
 	}
 
@@ -159,11 +184,25 @@ const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
 };
 
 const buildInvalidCommentExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
-	const ranges = buildExclusionRanges(text, lang);
+	const ranges: ExclusionRange[] = [];
+	let match: RegExpExecArray | null;
+
+	// XML 주석 제외 (<!-- ... --> 내부의 -- 가 SQL 주석으로 오인되지 않도록)
+	const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
+	while ((match = xmlCommentRegex.exec(text)) !== null) {
+		ranges.push({ start: match.index, end: match.index + match[0].length });
+	}
+
+	// XML: 태그 영역 제외
+	if (lang === `xml`) {
+		const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
+		while ((match = tagRegex.exec(text)) !== null) {
+			ranges.push({ start: match.index, end: match.index + match[0].length });
+		}
+	}
 
 	// 문자열 내부의 -- / /* */ 를 오탐으로 표시하지 않도록 제외 범위에 추가
 	const stringRegex = new RegExp(STRING_PATTERN, `g`);
-	let match: RegExpExecArray | null;
 	while ((match = stringRegex.exec(text)) !== null) {
 		ranges.push({ start: match.index, end: match.index + match[0].length });
 	}
@@ -218,7 +257,11 @@ const updateDecorations = (): void => {
 	const standardExclusionRanges = buildExclusionRanges(text, lang);
 	const invalidCommentExclusionRanges = buildInvalidCommentExclusionRanges(text, lang);
 
-	for (const group of keywordGroups) {
+	// 언어별 주석 그룹 선택
+	const langSpecificGroups = lang === `xml` ? xmlKeywordGroups : sqlKeywordGroups;
+	const allGroups = [...langSpecificGroups, ...keywordGroups];
+
+	for (const group of allGroups) {
 		const decorations: vscode.DecorationOptions[] = [];
 		let match: RegExpExecArray | null;
 		group.pattern.lastIndex = 0;
@@ -291,7 +334,15 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
 			keywordGroups.forEach((group) => {
 				group.decorationType.dispose();
 			});
+			xmlKeywordGroups.forEach((group) => {
+				group.decorationType.dispose();
+			});
+			sqlKeywordGroups.forEach((group) => {
+				group.decorationType.dispose();
+			});
 			keywordGroups = [];
+			xmlKeywordGroups = [];
+			sqlKeywordGroups = [];
 		},
 	});
 

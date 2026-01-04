@@ -13,327 +13,327 @@ const INSERT_SELECT_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s
 
 // 1. 컬럼 문자열 파싱 ---------------------------------------------------------------------------
 export const parseColumns = (columnsStr: string): string[] => {
-	const rs = columnsStr
-		.split(`,`)
-		.map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
-	return rs;
+  const rs = columnsStr
+  .split(`,`)
+  .map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
+  return rs;
 };
 
 // 2. VALUES 행의 각 값과 위치 파싱 --------------------------------------------------------------
 export const parseRowValues = (rowStr: string): ParsedRowValues => {
-	const values: string[] = [];
-	const positions: number[] = [];
-	const endPositions: number[] = [];
-	let current = ``;
-	let currentStart = -1;
-	let currentEnd = -1;
-	let inString = false;
-	let stringChar = ``;
-	let parenDepth = 0;
+  const values: string[] = [];
+  const positions: number[] = [];
+  const endPositions: number[] = [];
+  let current = ``;
+  let currentStart = -1;
+  let currentEnd = -1;
+  let inString = false;
+  let stringChar = ``;
+  let parenDepth = 0;
 
-	for (let i = 0; i < rowStr.length; i++) {
-		const char = rowStr[i];
+  for (let i = 0; i < rowStr.length; i++) {
+    const char = rowStr[i];
 
-		// SQL 표준 이스케이프 처리 ('' 또는 "")
-		if (inString && char === stringChar && rowStr[i + 1] === char) {
-			current += char + rowStr[i + 1];
-			currentEnd = i + 1;
-			i++;
-			continue;
-		}
+    // SQL 표준 이스케이프 처리 ('' 또는 "")
+    if (inString && char === stringChar && rowStr[i + 1] === char) {
+      current += char + rowStr[i + 1];
+      currentEnd = i + 1;
+      i++;
+      continue;
+    }
 
-		const isStringStart = (char === `'` || char === `"`) && !inString;
-		const isStringEnd = inString && char === stringChar;
-		const isComma = char === `,` && !inString && parenDepth === 0;
+    const isStringStart = (char === `'` || char === `"`) && !inString;
+    const isStringEnd = inString && char === stringChar;
+    const isComma = char === `,` && !inString && parenDepth === 0;
 
-		if (isComma) {
-			values.push(current.trim());
-			positions.push(currentStart);
-			endPositions.push(currentEnd + 1);
-			current = ``;
-			currentStart = -1;
-			currentEnd = -1;
-		}
-		else if (isStringStart) {
-			currentStart === -1 && (currentStart = i);
-			inString = true;
-			stringChar = char;
-			current += char;
-			currentEnd = i;
-		}
-		else if (isStringEnd) {
-			inString = false;
-			stringChar = ``;
-			current += char;
-			currentEnd = i;
-		}
-		else {
-			currentStart === -1 && char.trim() && (currentStart = i);
-			char.trim() && (currentEnd = i);
-			!inString && char === `(` && parenDepth++;
-			!inString && char === `)` && parenDepth--;
-			current += char;
-		}
-	}
+    if (isComma) {
+      values.push(current.trim());
+      positions.push(currentStart);
+      endPositions.push(currentEnd + 1);
+      current = ``;
+      currentStart = -1;
+      currentEnd = -1;
+    }
+    else if (isStringStart) {
+      currentStart === -1 && (currentStart = i);
+      inString = true;
+      stringChar = char;
+      current += char;
+      currentEnd = i;
+    }
+    else if (isStringEnd) {
+      inString = false;
+      stringChar = ``;
+      current += char;
+      currentEnd = i;
+    }
+    else {
+      currentStart === -1 && char.trim() && (currentStart = i);
+      char.trim() && (currentEnd = i);
+      !inString && char === `(` && parenDepth++;
+      !inString && char === `)` && parenDepth--;
+      current += char;
+    }
+  }
 
-	if (current.trim()) {
-		values.push(current.trim());
-		positions.push(currentStart);
-		endPositions.push(currentEnd + 1);
-	}
+  if (current.trim()) {
+    values.push(current.trim());
+    positions.push(currentStart);
+    endPositions.push(currentEnd + 1);
+  }
 
-	const rs: ParsedRowValues = {
-		values: values,
-		positions: positions,
-		endPositions: endPositions,
-	};
-	return rs;
+  const rs: ParsedRowValues = {
+    values: values,
+    positions: positions,
+    endPositions: endPositions,
+  };
+  return rs;
 };
 
 // 3. SELECT 컬럼 표현식 파싱 --------------------------------------------------------------------
 export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
-	const values: string[] = [];
-	const positions: number[] = [];
-	const endPositions: number[] = [];
-	let current = ``;
-	let currentStart = -1;
-	let currentEnd = -1;
-	let inString = false;
-	let stringChar = ``;
-	let parenDepth = 0;
+  const values: string[] = [];
+  const positions: number[] = [];
+  const endPositions: number[] = [];
+  let current = ``;
+  let currentStart = -1;
+  let currentEnd = -1;
+  let inString = false;
+  let stringChar = ``;
+  let parenDepth = 0;
 
-	for (let i = 0; i < selectStr.length; i++) {
-		const char = selectStr[i];
+  for (let i = 0; i < selectStr.length; i++) {
+    const char = selectStr[i];
 
-		// SQL 표준 이스케이프 처리
-		if (inString && char === stringChar && selectStr[i + 1] === char) {
-			current += char + selectStr[i + 1];
-			currentEnd = i + 1;
-			i++;
-			continue;
-		}
+    // SQL 표준 이스케이프 처리
+    if (inString && char === stringChar && selectStr[i + 1] === char) {
+      current += char + selectStr[i + 1];
+      currentEnd = i + 1;
+      i++;
+      continue;
+    }
 
-		const isStringStart = (char === `'` || char === `"`) && !inString;
-		const isStringEnd = inString && char === stringChar;
-		const isComma = char === `,` && !inString && parenDepth === 0;
+    const isStringStart = (char === `'` || char === `"`) && !inString;
+    const isStringEnd = inString && char === stringChar;
+    const isComma = char === `,` && !inString && parenDepth === 0;
 
-		if (isComma) {
-			values.push(current.trim());
-			positions.push(currentStart);
-			endPositions.push(currentEnd + 1);
-			current = ``;
-			currentStart = -1;
-			currentEnd = -1;
-		}
-		else if (isStringStart) {
-			currentStart === -1 && (currentStart = i);
-			inString = true;
-			stringChar = char;
-			current += char;
-			currentEnd = i;
-		}
-		else if (isStringEnd) {
-			inString = false;
-			stringChar = ``;
-			current += char;
-			currentEnd = i;
-		}
-		else {
-			currentStart === -1 && char.trim() && (currentStart = i);
-			char.trim() && (currentEnd = i);
-			!inString && char === `(` && parenDepth++;
-			!inString && char === `)` && parenDepth--;
-			current += char;
-		}
-	}
+    if (isComma) {
+      values.push(current.trim());
+      positions.push(currentStart);
+      endPositions.push(currentEnd + 1);
+      current = ``;
+      currentStart = -1;
+      currentEnd = -1;
+    }
+    else if (isStringStart) {
+      currentStart === -1 && (currentStart = i);
+      inString = true;
+      stringChar = char;
+      current += char;
+      currentEnd = i;
+    }
+    else if (isStringEnd) {
+      inString = false;
+      stringChar = ``;
+      current += char;
+      currentEnd = i;
+    }
+    else {
+      currentStart === -1 && char.trim() && (currentStart = i);
+      char.trim() && (currentEnd = i);
+      !inString && char === `(` && parenDepth++;
+      !inString && char === `)` && parenDepth--;
+      current += char;
+    }
+  }
 
-	if (current.trim()) {
-		values.push(current.trim());
-		positions.push(currentStart);
-		endPositions.push(currentEnd + 1);
-	}
+  if (current.trim()) {
+    values.push(current.trim());
+    positions.push(currentStart);
+    endPositions.push(currentEnd + 1);
+  }
 
-	const rs: ParsedRowValues = {
-		values: values,
-		positions: positions,
-		endPositions: endPositions,
-	};
-	return rs;
+  const rs: ParsedRowValues = {
+    values: values,
+    positions: positions,
+    endPositions: endPositions,
+  };
+  return rs;
 };
 
 // 4. VALUES 블록 전체 파싱 ----------------------------------------------------------------------
 const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
-	const valueRows: ValueRow[] = [];
-	let pos = startPos;
-	let inString = false;
-	let stringChar = ``;
-	let parenDepth = 0;
-	let currentRowStart = -1;
+  const valueRows: ValueRow[] = [];
+  let pos = startPos;
+  let inString = false;
+  let stringChar = ``;
+  let parenDepth = 0;
+  let currentRowStart = -1;
 
-	while (pos < text.length) {
-		const char = text[pos];
+  while (pos < text.length) {
+    const char = text[pos];
 
-		// SQL 표준 이스케이프 처리 ('' 또는 "")
-		if (inString && char === stringChar && text[pos + 1] === char) {
-			pos += 2;
-			continue;
-		}
+    // SQL 표준 이스케이프 처리 ('' 또는 "")
+    if (inString && char === stringChar && text[pos + 1] === char) {
+      pos += 2;
+      continue;
+    }
 
-		// 문자열 시작/종료 처리
-		if ((char === `'` || char === `"`) && !inString) {
-			inString = true;
-			stringChar = char;
-		}
-		else if (inString && char === stringChar) {
-			inString = false;
-			stringChar = ``;
-		}
+    // 문자열 시작/종료 처리
+    if ((char === `'` || char === `"`) && !inString) {
+      inString = true;
+      stringChar = char;
+    }
+    else if (inString && char === stringChar) {
+      inString = false;
+      stringChar = ``;
+    }
 
-		if (!inString) {
-			if (char === `(`) {
-				parenDepth === 0 && (currentRowStart = pos);
-				parenDepth++;
-			}
-			else if (char === `)`) {
-				parenDepth--;
-				if (parenDepth === 0 && currentRowStart !== -1) {
-					const rowContent = text.slice(currentRowStart + 1, pos);
-					const parsed = parseRowValues(rowContent);
-					const rowStartPos = currentRowStart + 1;
-					valueRows.push({
-						values: parsed.values,
-						position: rowStartPos,
-						valuePositions: parsed.positions.map((p) => rowStartPos + p),
-						valueEndPositions: parsed.endPositions.map((p) => rowStartPos + p),
-					});
-					currentRowStart = -1;
-				}
-			}
-			else if (parenDepth === 0) {
-				const remaining = text.slice(Math.max(0, pos)).toUpperCase();
-				if (remaining.startsWith(`INSERT`) || char === `;`) {
-					break;
-				}
-			}
-		}
-		pos++;
-	}
+    if (!inString) {
+      if (char === `(`) {
+        parenDepth === 0 && (currentRowStart = pos);
+        parenDepth++;
+      }
+      else if (char === `)`) {
+        parenDepth--;
+        if (parenDepth === 0 && currentRowStart !== -1) {
+          const rowContent = text.slice(currentRowStart + 1, pos);
+          const parsed = parseRowValues(rowContent);
+          const rowStartPos = currentRowStart + 1;
+          valueRows.push({
+            values: parsed.values,
+            position: rowStartPos,
+            valuePositions: parsed.positions.map((p) => rowStartPos + p),
+            valueEndPositions: parsed.endPositions.map((p) => rowStartPos + p),
+          });
+          currentRowStart = -1;
+        }
+      }
+      else if (parenDepth === 0) {
+        const remaining = text.slice(Math.max(0, pos)).toUpperCase();
+        if (remaining.startsWith(`INSERT`) || char === `;`) {
+          break;
+        }
+      }
+    }
+    pos++;
+  }
 
-	return valueRows;
+  return valueRows;
 };
 
 // 5. INSERT INTO ... VALUES 문 검색 -------------------------------------------------------------
 export const findInsertValues = function* (text: string): Generator<ParsedInsert> {
-	let match: RegExpExecArray | null;
-	INSERT_VALUES_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  INSERT_VALUES_REGEX.lastIndex = 0;
 
-	while ((match = INSERT_VALUES_REGEX.exec(text)) !== null) {
-		const columnsStr = match[1];
-		const valuesStartIdx = match.index + match[0].length;
-		const valueRows = parseValuesBlock(text, valuesStartIdx);
+  while ((match = INSERT_VALUES_REGEX.exec(text)) !== null) {
+    const columnsStr = match[1];
+    const valuesStartIdx = match.index + match[0].length;
+    const valueRows = parseValuesBlock(text, valuesStartIdx);
 
-		yield {
-			columns: parseColumns(columnsStr),
-			valueRows: valueRows,
-		};
-	}
+    yield {
+      columns: parseColumns(columnsStr),
+      valueRows: valueRows,
+    };
+  }
 };
 
 // 6. SELECT 컬럼 영역 추출 (FROM 전까지, 서브쿼리 고려) -----------------------------------------
 const extractSelectColumns = (text: string, startPos: number): string => {
-	let pos = startPos;
-	let parenDepth = 0;
-	let inString = false;
-	let stringChar = ``;
+  let pos = startPos;
+  let parenDepth = 0;
+  let inString = false;
+  let stringChar = ``;
 
-	while (pos < text.length) {
-		const char = text[pos];
+  while (pos < text.length) {
+    const char = text[pos];
 
-		// SQL 이스케이프 처리
-		if (inString && char === stringChar && text[pos + 1] === char) {
-			pos += 2;
-			continue;
-		}
+    // SQL 이스케이프 처리
+    if (inString && char === stringChar && text[pos + 1] === char) {
+      pos += 2;
+      continue;
+    }
 
-		// 문자열 시작/종료
-		if ((char === `'` || char === `"`) && !inString) {
-			inString = true;
-			stringChar = char;
-		}
-		else if (inString && char === stringChar) {
-			inString = false;
-			stringChar = ``;
-		}
+    // 문자열 시작/종료
+    if ((char === `'` || char === `"`) && !inString) {
+      inString = true;
+      stringChar = char;
+    }
+    else if (inString && char === stringChar) {
+      inString = false;
+      stringChar = ``;
+    }
 
-		if (!inString) {
-			if (char === `(`) {
-				parenDepth++;
-			}
-			else if (char === `)`) {
-				parenDepth--;
-			}
-			// parenDepth가 0일 때만 FROM 키워드 확인
-			else if (parenDepth === 0) {
-				const remaining = text.slice(pos, pos + 10).toUpperCase();
-				if (remaining.startsWith(`FROM`) && /^from[\s(]/i.test(remaining)) {
-					break;
-				}
-			}
-		}
-		pos++;
-	}
+    if (!inString) {
+      if (char === `(`) {
+        parenDepth++;
+      }
+      else if (char === `)`) {
+        parenDepth--;
+      }
+      // parenDepth가 0일 때만 FROM 키워드 확인
+      else if (parenDepth === 0) {
+        const remaining = text.slice(pos, pos + 10).toUpperCase();
+        if (remaining.startsWith(`FROM`) && /^from[\s(]/i.test(remaining)) {
+          break;
+        }
+      }
+    }
+    pos++;
+  }
 
-	const rs = text.slice(startPos, pos);
-	return rs;
+  const rs = text.slice(startPos, pos);
+  return rs;
 };
 
 // 7. INSERT INTO ... SELECT 문 검색 -------------------------------------------------------------
 export const findInsertSelect = function* (text: string): Generator<ParsedInsert> {
-	let match: RegExpExecArray | null;
-	INSERT_SELECT_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  INSERT_SELECT_REGEX.lastIndex = 0;
 
-	while ((match = INSERT_SELECT_REGEX.exec(text)) !== null) {
-		const columnsStr = match[1];
-		const columns = parseColumns(columnsStr);
-		const selectContentStart = match.index + match[0].length;
+  while ((match = INSERT_SELECT_REGEX.exec(text)) !== null) {
+    const columnsStr = match[1];
+    const columns = parseColumns(columnsStr);
+    const selectContentStart = match.index + match[0].length;
 
-		// SELECT 뒤부터 FROM 전까지 파싱 (서브쿼리 고려)
-		const selectStr = extractSelectColumns(text, selectContentStart);
-		const parsed = parseSelectColumns(selectStr);
+    // SELECT 뒤부터 FROM 전까지 파싱 (서브쿼리 고려)
+    const selectStr = extractSelectColumns(text, selectContentStart);
+    const parsed = parseSelectColumns(selectStr);
 
-		const valueRows: ValueRow[] = parsed.values.map((value, i) => {
-			const relativePos = parsed.positions[i];
-			const relativeEndPos = parsed.endPositions[i];
-			const absolutePos = relativePos >= 0 ? selectContentStart + relativePos : -1;
-			const absoluteEndPos = relativeEndPos >= 0 ? selectContentStart + relativeEndPos : -1;
-			const rs: ValueRow = {
-				values: [value],
-				position: absolutePos,
-				valuePositions: [absolutePos],
-				valueEndPositions: [absoluteEndPos],
-			};
-			return rs;
-		});
+    const valueRows: ValueRow[] = parsed.values.map((value, i) => {
+      const relativePos = parsed.positions[i];
+      const relativeEndPos = parsed.endPositions[i];
+      const absolutePos = relativePos >= 0 ? selectContentStart + relativePos : -1;
+      const absoluteEndPos = relativeEndPos >= 0 ? selectContentStart + relativeEndPos : -1;
+      const rs: ValueRow = {
+        values: [value],
+        position: absolutePos,
+        valuePositions: [absolutePos],
+        valueEndPositions: [absoluteEndPos],
+      };
+      return rs;
+    });
 
-		if (valueRows.length === columns.length) {
-			yield {
-				columns: columns,
-				valueRows: valueRows,
-			};
-		}
-	}
+    if (valueRows.length === columns.length) {
+      yield {
+        columns: columns,
+        valueRows: valueRows,
+      };
+    }
+  }
 };
 
 // 8. INSERT VALUES 유효성 검사 ------------------------------------------------------------------
 export const isValidInsert = (parsed: ParsedInsert): boolean => {
-	const hasRows = parsed.valueRows.length > 0;
-	const allMatch = parsed.valueRows.every((row) => row.values.length === parsed.columns.length);
-	const rs = hasRows && allMatch;
-	return rs;
+  const hasRows = parsed.valueRows.length > 0;
+  const allMatch = parsed.valueRows.every((row) => row.values.length === parsed.columns.length);
+  const rs = hasRows && allMatch;
+  return rs;
 };
 
 // 9. INSERT SELECT 유효성 검사 ------------------------------------------------------------------
 export const isValidInsertSelect = (parsed: ParsedInsert): boolean => {
-	const rs = parsed.valueRows.length === parsed.columns.length;
-	return rs;
+  const rs = parsed.valueRows.length === parsed.columns.length;
+  return rs;
 };

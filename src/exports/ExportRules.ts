@@ -7,21 +7,21 @@
 
 // -------------------------------------------------------------------------------
 export {
-	parseColumns,
-	parseRowValues,
-	parseSelectColumns,
-	findInsertValues,
-	findInsertSelect,
-	isValidInsert,
-	isValidInsertSelect,
+  parseColumns,
+  parseRowValues,
+  parseSelectColumns,
+  findInsertValues,
+  findInsertSelect,
+  isValidInsert,
+  isValidInsertSelect,
 } from "@rules/Parser";
 
 // -------------------------------------------------------------------------------
 export {
-	createInlayHintsProvider,
+  createInlayHintsProvider,
 } from "@rules/Provider";
 
 // -------------------------------------------------------------------------------
 export {
-	createKeywordDecorator,
+  createKeywordDecorator,
 } from "@rules/Decorator";

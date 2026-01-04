@@ -7,7 +7,7 @@
 
 // -------------------------------------------------------------------------------
 export {
-	type ParsedInsert,
-	type ValueRow,
-	type ParsedRowValues,
+  type ParsedInsert,
+  type ValueRow,
+  type ParsedRowValues,
 } from "@type/sql";

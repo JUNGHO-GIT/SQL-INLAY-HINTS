@@ -7,12 +7,12 @@
 
 // -------------------------------------------------------------------------------
 export {
-	logger,
-	initLogger,
+  logger,
+  initLogger,
 } from "@scripts/logger";
 
 // -------------------------------------------------------------------------------
 export {
-	notify,
-	modal,
+  notify,
+  modal,
 } from "@scripts/notify";

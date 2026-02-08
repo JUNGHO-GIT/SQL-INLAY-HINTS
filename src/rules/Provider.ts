@@ -7,7 +7,14 @@
 
 import { vscode } from "@exportLibs";
 import type { ParsedInsert } from "@exportTypes";
-import { findInsertValues, findInsertSelect, isValidInsert, isValidInsertSelect } from "@exportRules";
+import {
+  findInsertValues,
+  findInsertSelect,
+  findUpdateStatements,
+  findReplaceValues,
+  isValidInsert,
+  isValidInsertSelect,
+} from "@exportRules";
 
 // -------------------------------------------------------------------------------------------------
 class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
@@ -34,6 +41,22 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
         return hints;
       }
       isValidInsertSelect(parsed) && this.createHintsForSelect(document, parsed, hints);
+    }
+
+    // UPDATE ... SET 처리
+    for (const parsed of findUpdateStatements(text)) {
+      if (token.isCancellationRequested) {
+        return hints;
+      }
+      parsed.valueRows.length > 0 && this.createHintsForUpdate(document, parsed, hints);
+    }
+
+    // REPLACE INTO ... VALUES 처리
+    for (const parsed of findReplaceValues(text)) {
+      if (token.isCancellationRequested) {
+        return hints;
+      }
+      isValidInsert(parsed) && this.createHintsForValues(document, parsed, hints);
     }
 
     return hints;
@@ -75,6 +98,26 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
       const position = document.positionAt(valuePos);
       const hint = new vscode.InlayHint(
         position, `${parsed.columns[i]}: `, vscode.InlayHintKind.Parameter,
+      );
+      hint.paddingRight = true;
+      hints.push(hint);
+    });
+  }
+
+  // 4. UPDATE SET 구문 힌트 생성 -------------------------------------------------------------
+  private createHintsForUpdate(
+    document: vscode.TextDocument,
+    parsed: ParsedInsert,
+    hints: vscode.InlayHint[],
+  ): void {
+    parsed.valueRows.forEach((row, i) => {
+      const valuePos = row.valuePositions[0];
+      if (valuePos < 0) {
+        return;
+      }
+      const position = document.positionAt(valuePos);
+      const hint = new vscode.InlayHint(
+        position, `${parsed.columns[i]} = `, vscode.InlayHintKind.Parameter,
       );
       hint.paddingRight = true;
       hints.push(hint);

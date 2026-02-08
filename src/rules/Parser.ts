@@ -10,6 +10,8 @@ import type { ParsedInsert, ValueRow, ParsedRowValues } from "@exportTypes";
 // -------------------------------------------------------------------------------------------------
 const INSERT_VALUES_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
 const INSERT_SELECT_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*select\s+/gi;
+const UPDATE_REGEX = /update\s+["`]?[\w.]+["`]?\s+set\s+/gi;
+const REPLACE_VALUES_REGEX = /replace\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
 
 // 1. 컬럼 문자열 파싱 ---------------------------------------------------------------------------
 export const parseColumns = (columnsStr: string): string[] => {
@@ -336,4 +338,181 @@ export const isValidInsert = (parsed: ParsedInsert): boolean => {
 export const isValidInsertSelect = (parsed: ParsedInsert): boolean => {
   const rs = parsed.valueRows.length === parsed.columns.length;
   return rs;
+};
+
+// 10. UPDATE SET 절 파싱 -----------------------------------------------------------------------
+const parseUpdateSet = (setStr: string): ParsedRowValues => {
+  const columns: string[] = [];
+  const values: string[] = [];
+  const positions: number[] = [];
+  const endPositions: number[] = [];
+  let current = ``;
+  let currentCol = ``;
+  let currentStart = -1;
+  let currentEnd = -1;
+  let inString = false;
+  let stringChar = ``;
+  let parenDepth = 0;
+  let beforeEquals = true;
+
+  for (let i = 0; i < setStr.length; i++) {
+    const char = setStr[i];
+
+    if (inString && char === stringChar && setStr[i + 1] === char) {
+      current += char + setStr[i + 1];
+      currentEnd = i + 1;
+      i++;
+      continue;
+    }
+
+    const isStringStart = (char === `'` || char === `"`) && !inString;
+    const isStringEnd = inString && char === stringChar;
+    const isEquals = char === `=` && !inString && parenDepth === 0;
+    const isComma = char === `,` && !inString && parenDepth === 0;
+
+    if (isComma) {
+      if (!beforeEquals) {
+        values.push(current.trim());
+        positions.push(currentStart);
+        endPositions.push(currentEnd + 1);
+        current = ``;
+        currentStart = -1;
+        currentEnd = -1;
+        beforeEquals = true;
+      }
+    }
+    else if (isEquals) {
+      currentCol = current.trim().replaceAll(/^["`]|["`]$/g, ``);
+      columns.push(currentCol);
+      current = ``;
+      currentStart = -1;
+      currentEnd = -1;
+      beforeEquals = false;
+    }
+    else if (isStringStart) {
+      currentStart === -1 && (currentStart = i);
+      inString = true;
+      stringChar = char;
+      current += char;
+      currentEnd = i;
+    }
+    else if (isStringEnd) {
+      inString = false;
+      stringChar = ``;
+      current += char;
+      currentEnd = i;
+    }
+    else {
+      currentStart === -1 && char.trim() && (currentStart = i);
+      char.trim() && (currentEnd = i);
+      !inString && char === `(` && parenDepth++;
+      !inString && char === `)` && parenDepth--;
+      current += char;
+    }
+  }
+
+  if (current.trim() && !beforeEquals) {
+    values.push(current.trim());
+    positions.push(currentStart);
+    endPositions.push(currentEnd + 1);
+  }
+
+  const rs: ParsedRowValues = {
+    values: columns.length === values.length ? columns : values,
+    positions: positions,
+    endPositions: endPositions,
+  };
+  return rs;
+};
+
+// 11. UPDATE 문 검색 ---------------------------------------------------------------------------
+export const findUpdateStatements = function* (text: string): Generator<ParsedInsert> {
+  let match: RegExpExecArray | null;
+  UPDATE_REGEX.lastIndex = 0;
+
+  while ((match = UPDATE_REGEX.exec(text)) !== null) {
+    const setStartIdx = match.index + match[0].length;
+    let pos = setStartIdx;
+    let inString = false;
+    let stringChar = ``;
+    let parenDepth = 0;
+    let setContent = ``;
+
+    while (pos < text.length) {
+      const char = text[pos];
+
+      if (inString && char === stringChar && text[pos + 1] === char) {
+        setContent += char + text[pos + 1];
+        pos += 2;
+        continue;
+      }
+
+      if ((char === `'` || char === `"`) && !inString) {
+        inString = true;
+        stringChar = char;
+      }
+      else if (inString && char === stringChar) {
+        inString = false;
+        stringChar = ``;
+      }
+
+      if (!inString) {
+        if (char === `(`) {
+          parenDepth++;
+        }
+        else if (char === `)`) {
+          parenDepth--;
+        }
+        else if (parenDepth === 0) {
+          const remaining = text.slice(pos, pos + 10).toUpperCase();
+          if (remaining.startsWith(`WHERE`) || remaining.startsWith(`FROM`) || char === `;`) {
+            break;
+          }
+        }
+      }
+      setContent += char;
+      pos++;
+    }
+
+    const parsed = parseUpdateSet(setContent);
+    const columns = parsed.values;
+    const valueRows: ValueRow[] = [];
+
+    for (let i = 0; i < columns.length; i++) {
+      const relativePos = parsed.positions[i];
+      const relativeEndPos = parsed.endPositions[i];
+      const absolutePos = relativePos >= 0 ? setStartIdx + relativePos : -1;
+      const absoluteEndPos = relativeEndPos >= 0 ? setStartIdx + relativeEndPos : -1;
+      valueRows.push({
+        values: [columns[i]],
+        position: absolutePos,
+        valuePositions: [absolutePos],
+        valueEndPositions: [absoluteEndPos],
+      });
+    }
+
+    if (valueRows.length > 0) {
+      yield {
+        columns: columns,
+        valueRows: valueRows,
+      };
+    }
+  }
+};
+
+// 12. REPLACE INTO 문 검색 ---------------------------------------------------------------------
+export const findReplaceValues = function* (text: string): Generator<ParsedInsert> {
+  let match: RegExpExecArray | null;
+  REPLACE_VALUES_REGEX.lastIndex = 0;
+
+  while ((match = REPLACE_VALUES_REGEX.exec(text)) !== null) {
+    const columnsStr = match[1];
+    const valuesStartIdx = match.index + match[0].length;
+    const valueRows = parseValuesBlock(text, valuesStartIdx);
+
+    yield {
+      columns: parseColumns(columnsStr),
+      valueRows: valueRows,
+    };
+  }
 };

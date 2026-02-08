@@ -211,7 +211,7 @@ const cleanupRemoteBranches = (uniqueDefaults = []) => {
 
   remoteNames.forEach((remoteName) => {
     if (!remoteUtils.exists(remoteName)) {
-      logger(`info`, `Remote '${remoteName}' 존재하지 않음 - 원격 브랜치 정리 건너뜀`);
+      logger(`info`, `Remote '${remoteName}' 존재하지 않음 - 원격 ���랜치 정리 건너뜀`);
       return;
     }
 

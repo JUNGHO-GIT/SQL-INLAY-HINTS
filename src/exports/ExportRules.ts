@@ -12,6 +12,8 @@ export {
   parseSelectColumns,
   findInsertValues,
   findInsertSelect,
+  findUpdateStatements,
+  findReplaceValues,
   isValidInsert,
   isValidInsertSelect,
 } from "@rules/Parser";

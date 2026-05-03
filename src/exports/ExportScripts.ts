@@ -5,14 +5,6 @@
  * @since 2025-12-8
  */
 
-// -------------------------------------------------------------------------------
-export {
-  logger,
-  initLogger,
-} from "@scripts/logger";
-
-// -------------------------------------------------------------------------------
-export {
-  notify,
-  modal,
-} from "@scripts/notify";
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+export { initLogger, logger } from "@scripts/logger";
+export { modal, notify } from "@scripts/notify";

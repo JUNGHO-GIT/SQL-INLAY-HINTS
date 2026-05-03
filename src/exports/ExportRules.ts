@@ -5,25 +5,7 @@
  * @since 2025-12-8
  */
 
-// -------------------------------------------------------------------------------
-export {
-  parseColumns,
-  parseRowValues,
-  parseSelectColumns,
-  findInsertValues,
-  findInsertSelect,
-  findUpdateStatements,
-  findReplaceValues,
-  isValidInsert,
-  isValidInsertSelect,
-} from "@rules/Parser";
-
-// -------------------------------------------------------------------------------
-export {
-  createInlayHintsProvider,
-} from "@rules/Provider";
-
-// -------------------------------------------------------------------------------
-export {
-  createKeywordDecorator,
-} from "@rules/Decorator";
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+export { createKeywordDecorator } from "@rules/Decorator";
+export { findInsertSelect, findInsertValues, findReplaceValues, findUpdateStatements, isValidInsert, isValidInsertSelect, parseColumns, parseRowValues, parseSelectColumns } from "@rules/Parser";
+export { createInlayHintsProvider } from "@rules/Provider";

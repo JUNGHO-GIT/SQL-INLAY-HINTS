@@ -5,23 +5,23 @@
  * @since 2025-12-15
  */
 
-import { logger } from "@exportScripts";
 import _fs from "node:fs";
 import _path from "node:path";
+import { logger } from "@exportScripts";
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const _moduleCache: Map<string, any> = new Map();
 let _extensionPath: string = ``;
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const resolveModule = (moduleResult: unknown) => (moduleResult && typeof moduleResult === `object` && `default` in moduleResult ? moduleResult.default : moduleResult);
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const resolveModulePath = (specifier: string) => {
   const basePath = _path.join(_extensionPath, `out`, `node_modules`, specifier);
 
   if (!_fs.existsSync(basePath)) {
-    return specifier;
+  	return specifier;
   }
   const packageJsonPath = _path.join(basePath, `package.json`);
 
@@ -36,12 +36,12 @@ const resolveModulePath = (specifier: string) => {
     }
   }
   if (_fs.existsSync(_path.join(basePath, `index.js`))) {
-    return _path.join(basePath, `index.js`);
+  	return _path.join(basePath, `index.js`);
   }
   return basePath;
 };
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const dynamicImport = async (specifier: string) => {
   const resolvedPath = resolveModulePath(specifier);
 
@@ -61,22 +61,23 @@ const dynamicImport = async (specifier: string) => {
         return resolveModule(fallbackModule);
       }
       catch (error: unknown) {
-        logger(`error`, `dynamicImport - all attempts failed for ${specifier}: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        logger(`error`, `dynamicImport - all attempts failed for ${specifier}: ${message}`);
         return null;
       }
     }
   }
 };
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 export const setExtensionPath = (path: string) => {
   _extensionPath = path;
 };
 
-// -----------------------------------------------------------------------------------------
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 export const getModuleWithCache = async (moduleName: string) => {
   if (_moduleCache.has(moduleName)) {
-    return _moduleCache.get(moduleName);
+  	return _moduleCache.get(moduleName);
   }
   const moduleResult = await dynamicImport(moduleName);
   moduleResult && _moduleCache.set(moduleName, moduleResult);

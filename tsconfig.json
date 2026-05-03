@@ -2,19 +2,18 @@
   "$schema": "https://www.schemastore.org/tsconfig",
   "extends": "./tsconfig.paths.json",
   "compilerOptions": {
-		"target": "ESNext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+		"target": "esnext",
+		"module": "commonjs",
+		"moduleResolution": "bundler",
     "lib": [
-			"DOM",
-			"ESNext"
+      "esnext"
     ],
-    "allowJs": true,
-    "checkJs": false,
-    "noEmit": true,
-    "strict": true,
+		"rootDir": "./src",
+		"sourceMap": true,
+		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"resolveJsonModule": true
+		"resolveJsonModule": true,
+		"incremental": true
 	}
 }

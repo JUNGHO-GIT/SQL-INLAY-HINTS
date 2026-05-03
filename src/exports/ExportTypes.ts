@@ -5,9 +5,5 @@
  * @since 2025-12-8
  */
 
-// -------------------------------------------------------------------------------
-export {
-  type ParsedInsert,
-  type ValueRow,
-  type ParsedRowValues,
-} from "@type/sql";
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+export type { ParsedInsert, ParsedRowValues, ValueRow } from "@type/sql";

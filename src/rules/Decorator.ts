@@ -7,17 +7,15 @@
 
 import { vscode } from "@exportLibs";
 
-// -------------------------------------------------------------------------------------------------
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 interface KeywordGroup {
-  pattern: RegExp;
   decorationType: vscode.TextEditorDecorationType;
-  useExclusions?: boolean;
   exclusionKind?: `standard` | `invalidComment`;
+  pattern: RegExp;
+  useExclusions?: boolean;
 }
-
-// 1. 일반 SQL 키워드 (PURPLE #B77ECA) -----------------------------------------------------------
-const SQL_KEYWORDS = (
-  `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|USING|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|ALL|EXISTS|AND|OR|NOT|IN|IS|NULL|BETWEEN|LIKE|CASE|WHEN|THEN|ELSE|END|ASC|DESC|DEFAULT|UNIQUE|PRIMARY|FOREIGN|KEY|REFERENCES|INDEX|TABLE|DATABASE|VIEW|CREATE|ALTER|RENAME|REPLACE|` +
+// 1. 일반 SQL 키워드 (PURPLE #B77ECA) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+const SQL_KEYWORDS = `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|USING|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|ALL|EXISTS|AND|OR|NOT|IN|IS|NULL|BETWEEN|LIKE|CASE|WHEN|THEN|ELSE|END|ASC|DESC|DEFAULT|UNIQUE|PRIMARY|FOREIGN|KEY|REFERENCES|INDEX|TABLE|DATABASE|VIEW|CREATE|ALTER|RENAME|REPLACE|` +
   `BEGIN|COMMIT|ROLLBACK|SAVEPOINT|TRANSACTION|START|` +
   `WITH|RECURSIVE|` +
   `OVER|PARTITION|ROW_NUMBER|RANK|DENSE_RANK|LAG|LEAD|FIRST_VALUE|LAST_VALUE|NTILE|` +
@@ -25,28 +23,25 @@ const SQL_KEYWORDS = (
   `INT|INTEGER|VARCHAR|TEXT|CHAR|DATE|DATETIME|TIMESTAMP|TIME|BOOLEAN|BOOL|FLOAT|DOUBLE|DECIMAL|NUMERIC|BIGINT|SMALLINT|TINYINT|MEDIUMINT|BLOB|CLOB|JSON|XML|BINARY|VARBINARY|LONGTEXT|MEDIUMTEXT|` +
   `CONSTRAINT|CHECK|AUTO_INCREMENT|SERIAL|IDENTITY|UNSIGNED|SIGNED|ZEROFILL|` +
   `IF|ELSEIF|SHOW|DESCRIBE|EXPLAIN|USE|CALL|PROCEDURE|FUNCTION|TRIGGER|EVENT|SCHEMA|COLLATE|CHARACTER|CHARSET|LOCK|UNLOCK|TEMPORARY|TEMP|MATERIALIZED|MERGE|UPSERT|` +
-  `DISTINCT|PIVOT|UNPIVOT|LATERAL|WINDOW|FETCH|FIRST|LAST|ONLY|ROWS|RANGE|PRECEDING|FOLLOWING|UNBOUNDED|CURRENT|ROW|TIES|EXCLUDE|NO|ACTION|CASCADE|RESTRICT|NULLS|IGNORE|FORCE|STRAIGHT_JOIN`
-);
+  `DISTINCT|PIVOT|UNPIVOT|LATERAL|WINDOW|FETCH|FIRST|LAST|ONLY|ROWS|RANGE|PRECEDING|FOLLOWING|UNBOUNDED|CURRENT|ROW|TIES|EXCLUDE|NO|ACTION|CASCADE|RESTRICT|NULLS|IGNORE|FORCE|STRAIGHT_JOIN`;
 
-// 2. 위험 명령어 (RED #F44747) ------------------------------------------------------------------
-const DANGER_KEYWORDS = (
-  `DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE|FLUSH|RESET`
-);
+// 2. 위험 명령어 (RED #F44747) ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+const DANGER_KEYWORDS = `DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE|FLUSH|RESET`;
 
-// 3. 주석 패턴 ---------------------------------------------------------------------------------
-const XML_COMMENT_PATTERN = (`<!--[\\s\\S]*?-->`);
-const SQL_COMMENT_PATTERN = (`--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`);
+// 3. 주석 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+const XML_COMMENT_PATTERN = `<!--[\\s\\S]*?-->`;
+const SQL_COMMENT_PATTERN = `--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`;
 
-// 4. SQL 문자열/숫자 패턴 ---------------------------------------------------------------------
+// 4. SQL 문자열/숫자 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 // XML 속성 값(예: id="x")에 영향을 줄이기 위해 문자열은 단일 인용부호만 처리
-const STRING_PATTERN = (`'(?:''|[^'])*'`);
-const NUMBER_PATTERN = (`\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\b`);
+const STRING_PATTERN = `'(?:''|[^'])*'`;
+const NUMBER_PATTERN = `\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\b`;
 
-// 5. XML 태그 영역 (<...>) 제외 패턴 ----------------------------------------------------------
-const XML_TAG_PATTERN = (`<[\\s\\S]*?>`);
+// 5. XML 태그 영역 (<...>) 제외 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+const XML_TAG_PATTERN = `<[\\s\\S]*?>`;
 
-// -------------------------------------------------------------------------------------------------
-const createDecorationType = (color: string | vscode.ThemeColor, bold = false): vscode.TextEditorDecorationType => {
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+const createDecorationType = (color: string | vscode.ThemeColor, bold=false): vscode.TextEditorDecorationType => {
   const rs = vscode.window.createTextEditorDecorationType({
     color: color,
     fontWeight: bold ? `bold` : `normal`,
@@ -54,19 +49,19 @@ const createDecorationType = (color: string | vscode.ThemeColor, bold = false): 
   return rs;
 };
 
-// -------------------------------------------------------------------------------------------------
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 let keywordGroups: KeywordGroup[] = [];
 let activeEditor: vscode.TextEditor | undefined;
 let timeout: ReturnType<typeof setTimeout> | undefined;
 
-// 4. 설정값 조회 --------------------------------------------------------------------------------
+// 4. 설정값 조회 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const getConfig = <T>(key: string, defaultValue: T): T => {
   const config = vscode.workspace.getConfiguration(`SQL-Inlay-Hints`);
   const rs = config.get<T>(key, defaultValue);
   return rs;
 };
 
-// 5. 데코레이터 초기화 --------------------------------------------------------------------------
+// 5. 데코레이터 초기화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 let xmlKeywordGroups: KeywordGroup[] = [];
 let sqlKeywordGroups: KeywordGroup[] = [];
 
@@ -145,7 +140,7 @@ const initDecorators = (): void => {
   ];
 };
 
-// 6. 제외 범위 생성 (주석 + XML 태그) -----------------------------------------------------------
+// 6. 제외 범위 생성 (주석 + XML 태그) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 type ExclusionRange = { start: number; end: number };
 
 const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
@@ -159,35 +154,25 @@ const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
       ranges.push({ start: match.index, end: match.index + match[0].length });
     }
   }
-
   // SQL/XML 공통: /* */ 와 -- 주석 제외
   const sqlCommentRegex = new RegExp(SQL_COMMENT_PATTERN, `g`);
   while ((match = sqlCommentRegex.exec(text)) !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
   }
-
   if (lang === `xml`) {
     const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
     while ((match = tagRegex.exec(text)) !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
     }
   }
-
   ranges.sort((a, b) => a.start - b.start);
 
   // 병합(겹침/인접)하여 탐색 비용 감소
   const merged: ExclusionRange[] = [];
   for (const r of ranges) {
     const last = merged.length > 0 ? merged.at(-1) : undefined;
-		!last ? (
-			merged.push(r)
-		) : r.start <= last.end ? (
-			(last.end = Math.max(last.end, r.end))
-		) : (
-			merged.push(r)
-		);
+    !last ? merged.push(r) : r.start <= last.end ? (last.end = Math.max(last.end, r.end)) : merged.push(r);
   }
-
   return merged;
 };
 
@@ -200,7 +185,6 @@ const buildInvalidCommentExclusionRanges = (text: string, lang: string): Exclusi
   while ((match = xmlCommentRegex.exec(text)) !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
   }
-
   // XML: 태그 영역 제외
   if (lang === `xml`) {
     const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
@@ -208,26 +192,17 @@ const buildInvalidCommentExclusionRanges = (text: string, lang: string): Exclusi
       ranges.push({ start: match.index, end: match.index + match[0].length });
     }
   }
-
   // 문자열 내부의 -- / /* */ 를 오탐으로 표시하지 않도록 제외 범위에 추가
   const stringRegex = new RegExp(STRING_PATTERN, `g`);
   while ((match = stringRegex.exec(text)) !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
   }
-
   ranges.sort((a, b) => a.start - b.start);
   const merged: ExclusionRange[] = [];
   for (const r of ranges) {
     const last = merged.length > 0 ? merged.at(-1) : undefined;
-		!last ? (
-			merged.push(r)
-		) : r.start <= last.end ? (
-			(last.end = Math.max(last.end, r.end))
-		) : (
-			merged.push(r)
-		);
+    !last ? merged.push(r) : r.start <= last.end ? (last.end = Math.max(last.end, r.end)) : merged.push(r);
   }
-
   return merged;
 };
 
@@ -238,36 +213,34 @@ const isIndexExcluded = (ranges: ExclusionRange[], index: number): boolean => {
     const mid = (lo + hi) >> 1;
     const r = ranges[mid];
     if (index < r.start) {
-      hi = mid - 1;
+    	hi = mid - 1;
     }
     else if (index >= r.end) {
-      lo = mid + 1;
+    	lo = mid + 1;
     }
     else {
-      return true;
+    	return true;
     }
   }
   return false;
 };
 
-// 8. 데코레이션 업데이트 ------------------------------------------------------------------------
+// 8. 데코레이션 업데이트 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 const updateDecorations = (): void => {
   if (!activeEditor) {
-    return;
+  	return;
   }
-
   const lang = activeEditor.document.languageId;
   if (lang !== `sql` && lang !== `xml`) {
-    return;
+  	return;
   }
-
   const text = activeEditor.document.getText();
   const standardExclusionRanges = buildExclusionRanges(text, lang);
   const invalidCommentExclusionRanges = buildInvalidCommentExclusionRanges(text, lang);
 
   // 언어별 주석 그룹 선택
   const langSpecificGroups = lang === `xml` ? xmlKeywordGroups : sqlKeywordGroups;
-  const allGroups = [ ...langSpecificGroups, ...keywordGroups ];
+  const allGroups = [...langSpecificGroups, ...keywordGroups];
 
   for (const group of allGroups) {
     const decorations: vscode.DecorationOptions[] = [];
@@ -277,7 +250,7 @@ const updateDecorations = (): void => {
 
     while ((match = group.pattern.exec(text)) !== null) {
       if (group.useExclusions && isIndexExcluded(exclusionRanges, match.index)) {
-        continue;
+      	continue;
       }
       const startPos = activeEditor.document.positionAt(match.index);
       const endPos = activeEditor.document.positionAt(match.index + match[0].length);
@@ -285,36 +258,32 @@ const updateDecorations = (): void => {
         range: new vscode.Range(startPos, endPos),
       });
     }
-
     activeEditor.setDecorations(group.decorationType, decorations);
   }
 };
 
-// 9. 디바운스 트리거 ---------------------------------------------------------------------------
-const triggerUpdateDecorations = (throttle = false): void => {
+// 9. 디바운스 트리거 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+const triggerUpdateDecorations = (throttle=false): void => {
   if (timeout) {
-    clearTimeout(timeout);
+  	clearTimeout(timeout);
     timeout = undefined;
   }
-
   const delay = throttle ? 500 : 0;
   timeout = setTimeout(updateDecorations, delay);
 };
 
-// 10. SQL 키워드 하이라이팅 등록 ---------------------------------------------------------------
+// 10. SQL 키워드 하이라이팅 등록 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 export const createKeywordDecorator = (): vscode.Disposable[] => {
   const enableHighlight = getConfig<boolean>(`enableKeywordHighlight`, true);
   if (!enableHighlight) {
-    return [];
+  	return [];
   }
-
   initDecorators();
   activeEditor = vscode.window.activeTextEditor;
 
   if (activeEditor) {
-    triggerUpdateDecorations();
+  	triggerUpdateDecorations();
   }
-
   const disposables: vscode.Disposable[] = [];
 
   // 에디터 변경 감지
@@ -322,7 +291,7 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       activeEditor = editor;
       if (editor) {
-        triggerUpdateDecorations();
+      	triggerUpdateDecorations();
       }
     }),
   );
@@ -331,7 +300,7 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
   disposables.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document === activeEditor?.document) {
-        triggerUpdateDecorations(true);
+      	triggerUpdateDecorations(true);
       }
     }),
   );

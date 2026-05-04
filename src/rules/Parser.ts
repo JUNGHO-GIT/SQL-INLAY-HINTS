@@ -12,10 +12,29 @@ const INSERT_VALUES_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s
 const INSERT_SELECT_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*select\s+/gi;
 const UPDATE_REGEX = /update\s+["`]?[\w.]+["`]?\s+set\s+/gi;
 const REPLACE_VALUES_REGEX = /replace\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
+const columnsCache: Map<string, string[]> = new Map();
+
+// 0. 키워드 위치 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+const hasKeywordAt = (text: string, index: number, keyword: string): boolean => {
+  let matches = index + keyword.length <= text.length;
+  let offset = 0;
+
+  while (matches && offset < keyword.length) {
+    const actualCode = text.charCodeAt(index + offset);
+    const expectedCode = keyword.charCodeAt(offset);
+    matches = actualCode === expectedCode || actualCode === expectedCode + 32;
+    offset++;
+  }
+  return matches;
+};
 
 // 1. 컬럼 문자열 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 export const parseColumns = (columnsStr: string): string[] => {
-  const rs = columnsStr.split(`,`).map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
+  const cached = columnsCache.get(columnsStr);
+  const rs = cached ?? columnsStr.split(`,`).map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
+  if (!cached) {
+  	columnsCache.set(columnsStr, rs);
+  }
   return rs;
 };
 
@@ -54,7 +73,9 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
       currentEnd = -1;
     }
     else if (isStringStart) {
-    	currentStart === -1 && (currentStart = i);
+      if (currentStart === -1) {
+      	currentStart = i;
+      }
       inString = true;
       stringChar = char;
       current += char;
@@ -67,10 +88,19 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
       currentEnd = i;
     }
     else {
-    	currentStart === -1 && char.trim() && (currentStart = i);
-      char.trim() && (currentEnd = i);
-      !inString && char === `(` && parenDepth++;
-      !inString && char === `)` && parenDepth--;
+      const hasText = Boolean(char.trim());
+      if (currentStart === -1 && hasText) {
+      	currentStart = i;
+      }
+      if (hasText) {
+      	currentEnd = i;
+      }
+      if (!inString && char === `(`) {
+      	parenDepth++;
+      }
+      if (!inString && char === `)`) {
+      	parenDepth--;
+      }
       current += char;
     }
   }
@@ -122,7 +152,9 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
       currentEnd = -1;
     }
     else if (isStringStart) {
-    	currentStart === -1 && (currentStart = i);
+      if (currentStart === -1) {
+      	currentStart = i;
+      }
       inString = true;
       stringChar = char;
       current += char;
@@ -135,10 +167,19 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
       currentEnd = i;
     }
     else {
-    	currentStart === -1 && char.trim() && (currentStart = i);
-      char.trim() && (currentEnd = i);
-      !inString && char === `(` && parenDepth++;
-      !inString && char === `)` && parenDepth--;
+      const hasText = Boolean(char.trim());
+      if (currentStart === -1 && hasText) {
+      	currentStart = i;
+      }
+      if (hasText) {
+      	currentEnd = i;
+      }
+      if (!inString && char === `(`) {
+      	parenDepth++;
+      }
+      if (!inString && char === `)`) {
+      	parenDepth--;
+      }
       current += char;
     }
   }
@@ -183,7 +224,9 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
     }
     if (!inString) {
       if (char === `(`) {
-      	parenDepth === 0 && (currentRowStart = pos);
+        if (parenDepth === 0) {
+        	currentRowStart = pos;
+        }
         parenDepth++;
       }
       else if (char === `)`) {
@@ -202,8 +245,8 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
         }
       }
       else if (parenDepth === 0) {
-        const remaining = text.slice(Math.max(0, pos)).toUpperCase();
-        if (remaining.startsWith(`INSERT`) || char === `;`) {
+        const isInsertStart = (char === `I` || char === `i`) && hasKeywordAt(text, pos, `INSERT`);
+        if (isInsertStart || char === `;`) {
         	break;
         }
       }
@@ -218,7 +261,8 @@ export const findInsertValues = function* (text: string): Generator<ParsedInsert
   let match: RegExpExecArray | null;
   INSERT_VALUES_REGEX.lastIndex = 0;
 
-  while ((match = INSERT_VALUES_REGEX.exec(text)) !== null) {
+  match = INSERT_VALUES_REGEX.exec(text);
+  while (match !== null) {
     const columnsStr = match[1];
     const valuesStartIdx = match.index + match[0].length;
     const valueRows = parseValuesBlock(text, valuesStartIdx);
@@ -227,6 +271,7 @@ export const findInsertValues = function* (text: string): Generator<ParsedInsert
       columns: parseColumns(columnsStr),
       valueRows: valueRows,
     };
+    match = INSERT_VALUES_REGEX.exec(text);
   }
 };
 
@@ -263,8 +308,9 @@ const extractSelectColumns = (text: string, startPos: number): string => {
       }
       // parenDepth가 0일 때만 FROM 키워드 확인
       else if (parenDepth === 0) {
-        const remaining = text.slice(pos, pos + 10).toUpperCase();
-        if (remaining.startsWith(`FROM`) && /^from[\s(]/i.test(remaining)) {
+        const nextChar = text[pos + 4];
+        const isFromStart = (char === `F` || char === `f`) && hasKeywordAt(text, pos, `FROM`);
+        if (isFromStart && nextChar !== undefined && (nextChar === `(` || nextChar.trim() === ``)) {
         	break;
         }
       }
@@ -280,7 +326,8 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
   let match: RegExpExecArray | null;
   INSERT_SELECT_REGEX.lastIndex = 0;
 
-  while ((match = INSERT_SELECT_REGEX.exec(text)) !== null) {
+  match = INSERT_SELECT_REGEX.exec(text);
+  while (match !== null) {
     const columnsStr = match[1];
     const columns = parseColumns(columnsStr);
     const selectContentStart = match.index + match[0].length;
@@ -309,6 +356,7 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
         valueRows: valueRows,
       };
     }
+    match = INSERT_SELECT_REGEX.exec(text);
   }
 };
 
@@ -375,7 +423,9 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
       beforeEquals = false;
     }
     else if (isStringStart) {
-    	currentStart === -1 && (currentStart = i);
+      if (currentStart === -1) {
+      	currentStart = i;
+      }
       inString = true;
       stringChar = char;
       current += char;
@@ -388,10 +438,19 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
       currentEnd = i;
     }
     else {
-    	currentStart === -1 && char.trim() && (currentStart = i);
-      char.trim() && (currentEnd = i);
-      !inString && char === `(` && parenDepth++;
-      !inString && char === `)` && parenDepth--;
+      const hasText = Boolean(char.trim());
+      if (currentStart === -1 && hasText) {
+      	currentStart = i;
+      }
+      if (hasText) {
+      	currentEnd = i;
+      }
+      if (!inString && char === `(`) {
+      	parenDepth++;
+      }
+      if (!inString && char === `)`) {
+      	parenDepth--;
+      }
       current += char;
     }
   }
@@ -413,7 +472,8 @@ export const findUpdateStatements = function* (text: string): Generator<ParsedIn
   let match: RegExpExecArray | null;
   UPDATE_REGEX.lastIndex = 0;
 
-  while ((match = UPDATE_REGEX.exec(text)) !== null) {
+  match = UPDATE_REGEX.exec(text);
+  while (match !== null) {
     const setStartIdx = match.index + match[0].length;
     let pos = setStartIdx;
     let inString = false;
@@ -476,6 +536,7 @@ export const findUpdateStatements = function* (text: string): Generator<ParsedIn
         valueRows: valueRows,
       };
     }
+    match = UPDATE_REGEX.exec(text);
   }
 };
 
@@ -484,7 +545,8 @@ export const findReplaceValues = function* (text: string): Generator<ParsedInser
   let match: RegExpExecArray | null;
   REPLACE_VALUES_REGEX.lastIndex = 0;
 
-  while ((match = REPLACE_VALUES_REGEX.exec(text)) !== null) {
+  match = REPLACE_VALUES_REGEX.exec(text);
+  while (match !== null) {
     const columnsStr = match[1];
     const valuesStartIdx = match.index + match[0].length;
     const valueRows = parseValuesBlock(text, valuesStartIdx);
@@ -493,5 +555,6 @@ export const findReplaceValues = function* (text: string): Generator<ParsedInser
       columns: parseColumns(columnsStr),
       valueRows: valueRows,
     };
+    match = REPLACE_VALUES_REGEX.exec(text);
   }
 };

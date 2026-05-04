@@ -14,6 +14,14 @@ interface KeywordGroup {
   pattern: RegExp;
   useExclusions?: boolean;
 }
+
+interface DecorationCache {
+  editor: vscode.TextEditor;
+  maxDocumentLength: number;
+  uri: string;
+  version: number;
+}
+
 // 1. 일반 SQL 키워드 (PURPLE #B77ECA) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const SQL_KEYWORDS = `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|USING|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|ALL|EXISTS|AND|OR|NOT|IN|IS|NULL|BETWEEN|LIKE|CASE|WHEN|THEN|ELSE|END|ASC|DESC|DEFAULT|UNIQUE|PRIMARY|FOREIGN|KEY|REFERENCES|INDEX|TABLE|DATABASE|VIEW|CREATE|ALTER|RENAME|REPLACE|` +
   `BEGIN|COMMIT|ROLLBACK|SAVEPOINT|TRANSACTION|START|` +
@@ -52,6 +60,7 @@ const createDecorationType = (color: string | vscode.ThemeColor, bold=false): vs
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 let keywordGroups: KeywordGroup[] = [];
 let activeEditor: vscode.TextEditor | undefined;
+let decorationCache: DecorationCache | undefined;
 let timeout: ReturnType<typeof setTimeout> | undefined;
 
 // 4. 설정값 조회 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
@@ -59,6 +68,20 @@ const getConfig = <T>(key: string, defaultValue: T): T => {
   const config = vscode.workspace.getConfiguration(`SQL-Inlay-Hints`);
   const rs = config.get<T>(key, defaultValue);
   return rs;
+};
+
+// 4-1. 문서 길이 계산 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+const getDocumentLength = (document: vscode.TextDocument): number => {
+  const lastLine = document.lineAt(document.lineCount - 1);
+  const rs = document.offsetAt(lastLine.range.end);
+  return rs;
+};
+
+// 4-2. 데코레이션 제거 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+const clearDecorations = (editor: vscode.TextEditor): void => {
+  for (const group of [...keywordGroups, ...xmlKeywordGroups, ...sqlKeywordGroups]) {
+    editor.setDecorations(group.decorationType, []);
+  }
 };
 
 // 5. 데코레이터 초기화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
@@ -150,19 +173,25 @@ const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
   // XML: <!-- --> 주석 제외
   if (lang === `xml`) {
     const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
-    while ((match = xmlCommentRegex.exec(text)) !== null) {
+    match = xmlCommentRegex.exec(text);
+    while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
+      match = xmlCommentRegex.exec(text);
     }
   }
   // SQL/XML 공통: /* */ 와 -- 주석 제외
   const sqlCommentRegex = new RegExp(SQL_COMMENT_PATTERN, `g`);
-  while ((match = sqlCommentRegex.exec(text)) !== null) {
+  match = sqlCommentRegex.exec(text);
+  while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
+    match = sqlCommentRegex.exec(text);
   }
   if (lang === `xml`) {
     const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
-    while ((match = tagRegex.exec(text)) !== null) {
+    match = tagRegex.exec(text);
+    while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
+      match = tagRegex.exec(text);
     }
   }
   ranges.sort((a, b) => a.start - b.start);
@@ -171,7 +200,15 @@ const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
   const merged: ExclusionRange[] = [];
   for (const r of ranges) {
     const last = merged.length > 0 ? merged.at(-1) : undefined;
-    !last ? merged.push(r) : r.start <= last.end ? (last.end = Math.max(last.end, r.end)) : merged.push(r);
+    if (!last) {
+      merged.push(r);
+    }
+    else if (r.start <= last.end) {
+      last.end = Math.max(last.end, r.end);
+    }
+    else {
+      merged.push(r);
+    }
   }
   return merged;
 };
@@ -182,26 +219,40 @@ const buildInvalidCommentExclusionRanges = (text: string, lang: string): Exclusi
 
   // XML 주석 제외 (<!-- ... --> 내부의 -- 가 SQL 주석으로 오인되지 않도록)
   const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
-  while ((match = xmlCommentRegex.exec(text)) !== null) {
+  match = xmlCommentRegex.exec(text);
+  while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
+    match = xmlCommentRegex.exec(text);
   }
   // XML: 태그 영역 제외
   if (lang === `xml`) {
     const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
-    while ((match = tagRegex.exec(text)) !== null) {
+    match = tagRegex.exec(text);
+    while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
+      match = tagRegex.exec(text);
     }
   }
   // 문자열 내부의 -- / /* */ 를 오탐으로 표시하지 않도록 제외 범위에 추가
   const stringRegex = new RegExp(STRING_PATTERN, `g`);
-  while ((match = stringRegex.exec(text)) !== null) {
+  match = stringRegex.exec(text);
+  while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
+    match = stringRegex.exec(text);
   }
   ranges.sort((a, b) => a.start - b.start);
   const merged: ExclusionRange[] = [];
   for (const r of ranges) {
     const last = merged.length > 0 ? merged.at(-1) : undefined;
-    !last ? merged.push(r) : r.start <= last.end ? (last.end = Math.max(last.end, r.end)) : merged.push(r);
+    if (!last) {
+      merged.push(r);
+    }
+    else if (r.start <= last.end) {
+      last.end = Math.max(last.end, r.end);
+    }
+    else {
+      merged.push(r);
+    }
   }
   return merged;
 };
@@ -230,11 +281,29 @@ const updateDecorations = (): void => {
   if (!activeEditor) {
   	return;
   }
-  const lang = activeEditor.document.languageId;
+  const editor = activeEditor;
+  const lang = editor.document.languageId;
   if (lang !== `sql` && lang !== `xml`) {
   	return;
   }
-  const text = activeEditor.document.getText();
+  const uri = editor.document.uri.toString();
+  const maxDocumentLength = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
+  const documentLength = getDocumentLength(editor.document);
+  const cacheHit = decorationCache?.editor === editor && decorationCache.uri === uri && decorationCache.version === editor.document.version && decorationCache.maxDocumentLength === maxDocumentLength;
+  if (cacheHit) {
+  	return;
+  }
+  if (maxDocumentLength > 0 && documentLength > maxDocumentLength) {
+    clearDecorations(editor);
+    decorationCache = {
+      editor: editor,
+      maxDocumentLength: maxDocumentLength,
+      uri: uri,
+      version: editor.document.version,
+    };
+  	return;
+  }
+  const text = editor.document.getText();
   const standardExclusionRanges = buildExclusionRanges(text, lang);
   const invalidCommentExclusionRanges = buildInvalidCommentExclusionRanges(text, lang);
 
@@ -248,18 +317,27 @@ const updateDecorations = (): void => {
     group.pattern.lastIndex = 0;
     const exclusionRanges = group.exclusionKind === `invalidComment` ? invalidCommentExclusionRanges : standardExclusionRanges;
 
-    while ((match = group.pattern.exec(text)) !== null) {
+    match = group.pattern.exec(text);
+    while (match !== null) {
       if (group.useExclusions && isIndexExcluded(exclusionRanges, match.index)) {
+        match = group.pattern.exec(text);
       	continue;
       }
-      const startPos = activeEditor.document.positionAt(match.index);
-      const endPos = activeEditor.document.positionAt(match.index + match[0].length);
+      const startPos = editor.document.positionAt(match.index);
+      const endPos = editor.document.positionAt(match.index + match[0].length);
       decorations.push({
         range: new vscode.Range(startPos, endPos),
       });
+      match = group.pattern.exec(text);
     }
-    activeEditor.setDecorations(group.decorationType, decorations);
+    editor.setDecorations(group.decorationType, decorations);
   }
+  decorationCache = {
+    editor: editor,
+    maxDocumentLength: maxDocumentLength,
+    uri: uri,
+    version: editor.document.version,
+  };
 };
 
 // 9. 디바운스 트리거 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -308,6 +386,11 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
   // 데코레이터 정리
   disposables.push({
     dispose: () => {
+      if (timeout) {
+      	clearTimeout(timeout);
+        timeout = undefined;
+      }
+      decorationCache = undefined;
       keywordGroups.forEach((group) => {
         group.decorationType.dispose();
       });

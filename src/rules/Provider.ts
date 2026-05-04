@@ -10,9 +10,52 @@ import { findInsertSelect, findInsertValues, findReplaceValues, findUpdateStatem
 import type { ParsedInsert } from "@exportTypes";
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+interface ProviderCache {
+  hints: vscode.InlayHint[];
+  maxDocumentLength: number;
+  uri: string;
+  version: number;
+}
+
+// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
+  private cache: ProviderCache | undefined;
+
   // 1. InlayHints 제공 메인 함수 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-  async provideInlayHints(document: vscode.TextDocument, _range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
+  async provideInlayHints(document: vscode.TextDocument, range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
+    const uri = document.uri.toString();
+    const maxDocumentLength = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
+    const documentLength = this.getDocumentLength(document);
+    const cacheHit = this.cache?.uri === uri && this.cache.version === document.version && this.cache.maxDocumentLength === maxDocumentLength;
+    const shouldParse = !token.isCancellationRequested && (maxDocumentLength === 0 || documentLength <= maxDocumentLength);
+    let hints: vscode.InlayHint[] = [];
+
+    if (shouldParse) {
+      const sourceHints = cacheHit && this.cache ? this.cache.hints : this.createHintsForDocument(document, token);
+      if (!token.isCancellationRequested) {
+        if (!cacheHit) {
+          this.cache = {
+            hints: sourceHints,
+            maxDocumentLength: maxDocumentLength,
+            uri: uri,
+            version: document.version,
+          };
+        }
+        hints = sourceHints.filter((hint) => range.contains(hint.position));
+      }
+    }
+    return hints;
+  }
+
+  // 2. 문서 길이 계산 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+  private getDocumentLength(document: vscode.TextDocument): number {
+    const lastLine = document.lineAt(document.lineCount - 1);
+    const rs = document.offsetAt(lastLine.range.end);
+    return rs;
+  }
+
+  // 3. 문서 단위 힌트 생성 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+  private createHintsForDocument(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.InlayHint[] {
     const text = document.getText();
     const hints: vscode.InlayHint[] = [];
 

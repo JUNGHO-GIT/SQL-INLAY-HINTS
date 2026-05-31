@@ -6,7 +6,7 @@
  */
 
 import { vscode } from "@exportLibs";
-import { findInsertSelect, findInsertValues, findReplaceValues, findUpdateStatements, isValidInsert, isValidInsertSelect } from "@exportRules";
+import { findInsertSelect as fndInsrSlct, findInsertValues as fndInsrVals, findReplaceValues as fndRplcVals, findUpdateStatements as fndUpdtSttm, isValidInsert as isVldInsr, isValidInsertSelect as isVlInSl } from "@exportRules";
 import type { ParsedInsert } from "@exportTypes";
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
@@ -24,10 +24,10 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
   // 1. InlayHints 제공 메인 함수 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
   async provideInlayHints(document: vscode.TextDocument, range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
     const uri = document.uri.toString();
-    const maxDocumentLength = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
-    const documentLength = this.getDocumentLength(document);
-    const cacheHit = this.cache?.uri === uri && this.cache.version === document.version && this.cache.maxDocumentLength === maxDocumentLength;
-    const shouldParse = !token.isCancellationRequested && (maxDocumentLength === 0 || documentLength <= maxDocumentLength);
+    const mxDocLen = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
+    const docLen = this.getDocumentLength(document);
+    const cacheHit = this.cache?.uri === uri && this.cache.version === document.version && this.cache.maxDocumentLength === mxDocLen;
+    const shouldParse = !token.isCancellationRequested && (mxDocLen === 0 || docLen <= mxDocLen);
     let hints: vscode.InlayHint[] = [];
 
     if (shouldParse) {
@@ -36,7 +36,7 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
         if (!cacheHit) {
           this.cache = {
             hints: sourceHints,
-            maxDocumentLength: maxDocumentLength,
+            maxDocumentLength: mxDocLen,
             uri: uri,
             version: document.version,
           };
@@ -60,32 +60,32 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
     const hints: vscode.InlayHint[] = [];
 
     // INSERT INTO ... VALUES 처리
-    for (const parsed of findInsertValues(text)) {
+    for (const parsed of fndInsrVals(text)) {
       if (token.isCancellationRequested) {
       	return hints;
       }
-      isValidInsert(parsed) && this.createHintsForValues(document, parsed, hints);
+      isVldInsr(parsed) && this.createHintsForValues(document, parsed, hints);
     }
     // INSERT INTO ... SELECT 처리
-    for (const parsed of findInsertSelect(text)) {
+    for (const parsed of fndInsrSlct(text)) {
       if (token.isCancellationRequested) {
       	return hints;
       }
-      isValidInsertSelect(parsed) && this.createHintsForSelect(document, parsed, hints);
+      isVlInSl(parsed) && this.createHintsForSelect(document, parsed, hints);
     }
     // UPDATE ... SET 처리
-    for (const parsed of findUpdateStatements(text)) {
+    for (const parsed of fndUpdtSttm(text)) {
       if (token.isCancellationRequested) {
       	return hints;
       }
       parsed.valueRows.length > 0 && this.createHintsForUpdate(document, parsed, hints);
     }
     // REPLACE INTO ... VALUES 처리
-    for (const parsed of findReplaceValues(text)) {
+    for (const parsed of fndRplcVals(text)) {
       if (token.isCancellationRequested) {
       	return hints;
       }
-      isValidInsert(parsed) && this.createHintsForValues(document, parsed, hints);
+      isVldInsr(parsed) && this.createHintsForValues(document, parsed, hints);
     }
     return hints;
   }
@@ -139,10 +139,9 @@ const getConfig = <T>(key: string, defaultValue: T): T => {
 };
 
 // 5. SQL 파일 Provider 등록 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const registerSqlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
+const rgstSqlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
   const rs = vscode.languages.registerInlayHintsProvider(
     {
-      scheme: `file`,
       language: `sql`,
     },
     provider,
@@ -151,10 +150,9 @@ const registerSqlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disp
 };
 
 // 6. MyBatis XML Provider 등록 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const registerXmlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
+const rgstXmlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
   const rs = vscode.languages.registerInlayHintsProvider(
     {
-      scheme: `file`,
       language: `xml`,
     },
     provider,
@@ -163,17 +161,17 @@ const registerXmlProvider = (provider: SqlInsertInlayHintsProvider): vscode.Disp
 };
 
 // 7. InlayHints Provider 등록 (메인) ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const createInlayHintsProvider = (): vscode.Disposable[] => {
+export const crtInHnPr = (): vscode.Disposable[] => {
   const provider = new SqlInsertInlayHintsProvider();
   const disposables: vscode.Disposable[] = [];
 
   // SQL 파일 옵션 확인 후 등록
   const enableSql = getConfig<boolean>(`enableSql`, true);
-  enableSql && disposables.push(registerSqlProvider(provider));
+  enableSql && disposables.push(rgstSqlProv(provider));
 
   // MyBatis XML 옵션 확인 후 등록
   const enableXml = getConfig<boolean>(`enableXml`, true);
-  enableXml && disposables.push(registerXmlProvider(provider));
+  enableXml && disposables.push(rgstXmlProv(provider));
 
   return disposables;
 };

@@ -5,16 +5,26 @@
  * @since 2025-12-8
  */
 
-import type { ParsedInsert, ParsedRowValues, ValueRow } from "@exportTypes";
+import type { ParsedInsert, ParsedRowValues as PrsdRwVals, ValueRow } from "@exportTypes";
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-const INSERT_VALUES_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
-const INSERT_SELECT_REGEX = /insert\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*select\s+/gi;
-const UPDATE_REGEX = /update\s+["`]?[\w.]+["`]?\s+set\s+/gi;
-const REPLACE_VALUES_REGEX = /replace\s+into\s+["`]?[\w.]+["`]?\s*\(([\S\s]*?)\)\s*values\s*/gi;
+const INSR_VALS_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
+const INSR_SLCT_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*select\s+/gi;
+const UPDATE_REGEX = /update\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s+set\s+/gi;
+const RPLC_VALS_RE = /replace\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
 const columnsCache: Map<string, string[]> = new Map();
 
-// 0. 키워드 위치 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 0. SQL 식별자 정규화 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+const nrmlId = (identifier: string): string => {
+  const trimmed = identifier.trim();
+  const hsDblQts = trimmed.startsWith(`"`) && trimmed.endsWith(`"`);
+  const hasBackticks = trimmed.charCodeAt(0) === 96 && trimmed.charCodeAt(trimmed.length - 1) === 96;
+  const hasBrackets = trimmed.startsWith(`[`) && trimmed.endsWith(`]`);
+  const rs = hsDblQts || hasBackticks || hasBrackets ? trimmed.slice(1, -1) : trimmed;
+  return rs;
+};
+
+// 0-1. 키워드 위치 검사 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const hasKeywordAt = (text: string, index: number, keyword: string): boolean => {
   let matches = index + keyword.length <= text.length;
   let offset = 0;
@@ -31,7 +41,7 @@ const hasKeywordAt = (text: string, index: number, keyword: string): boolean => 
 // 1. 컬럼 문자열 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 export const parseColumns = (columnsStr: string): string[] => {
   const cached = columnsCache.get(columnsStr);
-  const rs = cached ?? columnsStr.split(`,`).map((col) => col.trim().replaceAll(/^["`]|["`]$/g, ``));
+  const rs = cached ?? columnsStr.split(`,`).map((col) => nrmlId(col));
   if (!cached) {
   	columnsCache.set(columnsStr, rs);
   }
@@ -39,7 +49,7 @@ export const parseColumns = (columnsStr: string): string[] => {
 };
 
 // 2. VALUES 행의 각 값과 위치 파싱 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-export const parseRowValues = (rowStr: string): ParsedRowValues => {
+export const prsRwVals = (rowStr: string): PrsdRwVals => {
   const values: string[] = [];
   const positions: number[] = [];
   const endPositions: number[] = [];
@@ -60,7 +70,7 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
       i++;
       continue;
     }
-    const isStringStart = (char=== `'` || char=== `"`) && !inString;
+    const isStrStrt = (char=== `'` || char=== `"`) && !inString;
     const isStringEnd = inString && char === stringChar;
     const isComma = char === `,` && !inString && parenDepth === 0;
 
@@ -72,7 +82,7 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
       currentStart = -1;
       currentEnd = -1;
     }
-    else if (isStringStart) {
+    else if (isStrStrt) {
       if (currentStart === -1) {
       	currentStart = i;
       }
@@ -109,7 +119,7 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
     positions.push(currentStart);
     endPositions.push(currentEnd + 1);
   }
-  const rs: ParsedRowValues = {
+  const rs: PrsdRwVals = {
     values: values,
     positions: positions,
     endPositions: endPositions,
@@ -118,7 +128,7 @@ export const parseRowValues = (rowStr: string): ParsedRowValues => {
 };
 
 // 3. SELECT 컬럼 표현식 파싱 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
+export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
   const values: string[] = [];
   const positions: number[] = [];
   const endPositions: number[] = [];
@@ -139,7 +149,7 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
       i++;
       continue;
     }
-    const isStringStart = (char=== `'` || char=== `"`) && !inString;
+    const isStrStrt = (char=== `'` || char=== `"`) && !inString;
     const isStringEnd = inString && char === stringChar;
     const isComma = char === `,` && !inString && parenDepth === 0;
 
@@ -151,7 +161,7 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
       currentStart = -1;
       currentEnd = -1;
     }
-    else if (isStringStart) {
+    else if (isStrStrt) {
       if (currentStart === -1) {
       	currentStart = i;
       }
@@ -188,7 +198,7 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
     positions.push(currentStart);
     endPositions.push(currentEnd + 1);
   }
-  const rs: ParsedRowValues = {
+  const rs: PrsdRwVals = {
     values: values,
     positions: positions,
     endPositions: endPositions,
@@ -197,13 +207,13 @@ export const parseSelectColumns = (selectStr: string): ParsedRowValues => {
 };
 
 // 4. VALUES 블록 전체 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
+const prsValsBlck = (text: string, startPos: number): ValueRow[] => {
   const valueRows: ValueRow[] = [];
   let pos = startPos;
   let inString = false;
   let stringChar = ``;
   let parenDepth = 0;
-  let currentRowStart = -1;
+  let curRwStrt = -1;
 
   while (pos < text.length) {
     const char = text[pos];
@@ -225,28 +235,28 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
     if (!inString) {
       if (char === `(`) {
         if (parenDepth === 0) {
-        	currentRowStart = pos;
+        	curRwStrt = pos;
         }
         parenDepth++;
       }
       else if (char === `)`) {
         parenDepth--;
-        if (parenDepth === 0 && currentRowStart !== -1) {
-          const rowContent = text.slice(currentRowStart + 1, pos);
-          const parsed = parseRowValues(rowContent);
-          const rowStartPos = currentRowStart + 1;
+        if (parenDepth === 0 && curRwStrt !== -1) {
+          const rowContent = text.slice(curRwStrt + 1, pos);
+          const parsed = prsRwVals(rowContent);
+          const rowStartPos = curRwStrt + 1;
           valueRows.push({
             values: parsed.values,
             position: rowStartPos,
             valuePositions: parsed.positions.map((p) => rowStartPos + p),
             valueEndPositions: parsed.endPositions.map((p) => rowStartPos + p),
           });
-          currentRowStart = -1;
+          curRwStrt = -1;
         }
       }
       else if (parenDepth === 0) {
-        const isInsertStart = (char === `I` || char === `i`) && hasKeywordAt(text, pos, `INSERT`);
-        if (isInsertStart || char === `;`) {
+        const isInsrStrt = (char === `I` || char === `i`) && hasKeywordAt(text, pos, `INSERT`);
+        if (isInsrStrt || char === `;`) {
         	break;
         }
       }
@@ -257,26 +267,26 @@ const parseValuesBlock = (text: string, startPos: number): ValueRow[] => {
 };
 
 // 5. INSERT INTO ... VALUES 문 검색 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-export const findInsertValues = function* (text: string): Generator<ParsedInsert> {
+export const fndInsrVals = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
-  INSERT_VALUES_REGEX.lastIndex = 0;
+  INSR_VALS_RE.lastIndex = 0;
 
-  match = INSERT_VALUES_REGEX.exec(text);
+  match = INSR_VALS_RE.exec(text);
   while (match !== null) {
     const columnsStr = match[1];
-    const valuesStartIdx = match.index + match[0].length;
-    const valueRows = parseValuesBlock(text, valuesStartIdx);
+    const valsStrtIdx = match.index + match[0].length;
+    const valueRows = prsValsBlck(text, valsStrtIdx);
 
     yield {
       columns: parseColumns(columnsStr),
       valueRows: valueRows,
     };
-    match = INSERT_VALUES_REGEX.exec(text);
+    match = INSR_VALS_RE.exec(text);
   }
 };
 
 // 6. SELECT 컬럼 영역 추출 (FROM 전까지, 서브쿼리 고려) ―――――――――――――――――――――――――――――――――――――――--
-const extractSelectColumns = (text: string, startPos: number): string => {
+const extrSlctClmn = (text: string, startPos: number): string => {
   let pos = startPos;
   let parenDepth = 0;
   let inString = false;
@@ -322,30 +332,30 @@ const extractSelectColumns = (text: string, startPos: number): string => {
 };
 
 // 7. INSERT INTO ... SELECT 문 검색 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-export const findInsertSelect = function* (text: string): Generator<ParsedInsert> {
+export const fndInsrSlct = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
-  INSERT_SELECT_REGEX.lastIndex = 0;
+  INSR_SLCT_RE.lastIndex = 0;
 
-  match = INSERT_SELECT_REGEX.exec(text);
+  match = INSR_SLCT_RE.exec(text);
   while (match !== null) {
     const columnsStr = match[1];
     const columns = parseColumns(columnsStr);
-    const selectContentStart = match.index + match[0].length;
+    const slctContStrt = match.index + match[0].length;
 
     // SELECT 뒤부터 FROM 전까지 파싱 (서브쿼리 고려)
-    const selectStr = extractSelectColumns(text, selectContentStart);
-    const parsed = parseSelectColumns(selectStr);
+    const selectStr = extrSlctClmn(text, slctContStrt);
+    const parsed = prsSlctClmn(selectStr);
 
     const valueRows: ValueRow[] = parsed.values.map((value, i) => {
       const relativePos = parsed.positions[i];
-      const relativeEndPos = parsed.endPositions[i];
-      const absolutePos = relativePos >= 0 ? selectContentStart + relativePos : -1;
-      const absoluteEndPos = relativeEndPos >= 0 ? selectContentStart + relativeEndPos : -1;
+      const rltvEndPs = parsed.endPositions[i];
+      const absolutePos = relativePos >= 0 ? slctContStrt + relativePos : -1;
+      const abslEndPs = rltvEndPs >= 0 ? slctContStrt + rltvEndPs : -1;
       const rs: ValueRow = {
         values: [value],
         position: absolutePos,
         valuePositions: [absolutePos],
-        valueEndPositions: [absoluteEndPos],
+        valueEndPositions: [abslEndPs],
       };
       return rs;
     });
@@ -356,12 +366,12 @@ export const findInsertSelect = function* (text: string): Generator<ParsedInsert
         valueRows: valueRows,
       };
     }
-    match = INSERT_SELECT_REGEX.exec(text);
+    match = INSR_SLCT_RE.exec(text);
   }
 };
 
 // 8. INSERT VALUES 유효성 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const isValidInsert = (parsed: ParsedInsert): boolean => {
+export const isVldInsr = (parsed: ParsedInsert): boolean => {
   const hasRows = parsed.valueRows.length > 0;
   const allMatch = parsed.valueRows.every((row) => row.values.length === parsed.columns.length);
   const rs = hasRows && allMatch;
@@ -369,13 +379,13 @@ export const isValidInsert = (parsed: ParsedInsert): boolean => {
 };
 
 // 9. INSERT SELECT 유효성 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const isValidInsertSelect = (parsed: ParsedInsert): boolean => {
+export const isVlInSl = (parsed: ParsedInsert): boolean => {
   const rs = parsed.valueRows.length === parsed.columns.length;
   return rs;
 };
 
 // 10. UPDATE SET 절 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-const parseUpdateSet = (setStr: string): ParsedRowValues => {
+const prsUpdtSt = (setStr: string): PrsdRwVals => {
   const columns: string[] = [];
   const values: string[] = [];
   const positions: number[] = [];
@@ -398,7 +408,7 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
       i++;
       continue;
     }
-    const isStringStart = (char=== `'` || char=== `"`) && !inString;
+    const isStrStrt = (char=== `'` || char=== `"`) && !inString;
     const isStringEnd = inString && char === stringChar;
     const isEquals = char === `=` && !inString && parenDepth === 0;
     const isComma = char === `,` && !inString && parenDepth === 0;
@@ -415,14 +425,14 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
       }
     }
     else if (isEquals) {
-    	currentCol = current.trim().replaceAll(/^["`]|["`]$/g, ``);
+    	currentCol = nrmlId(current);
       columns.push(currentCol);
       current = ``;
       currentStart = -1;
       currentEnd = -1;
       beforeEquals = false;
     }
-    else if (isStringStart) {
+    else if (isStrStrt) {
       if (currentStart === -1) {
       	currentStart = i;
       }
@@ -459,7 +469,7 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
     positions.push(currentStart);
     endPositions.push(currentEnd + 1);
   }
-  const rs: ParsedRowValues = {
+  const rs: PrsdRwVals = {
     values: columns.length === values.length ? columns : values,
     positions: positions,
     endPositions: endPositions,
@@ -468,7 +478,7 @@ const parseUpdateSet = (setStr: string): ParsedRowValues => {
 };
 
 // 11. UPDATE 문 검색 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const findUpdateStatements = function* (text: string): Generator<ParsedInsert> {
+export const fndUpdtSttm = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
   UPDATE_REGEX.lastIndex = 0;
 
@@ -514,20 +524,20 @@ export const findUpdateStatements = function* (text: string): Generator<ParsedIn
       setContent += char;
       pos++;
     }
-    const parsed = parseUpdateSet(setContent);
+    const parsed = prsUpdtSt(setContent);
     const columns = parsed.values;
     const valueRows: ValueRow[] = [];
 
     for (let i = 0; i < columns.length; i++) {
       const relativePos = parsed.positions[i];
-      const relativeEndPos = parsed.endPositions[i];
+      const rltvEndPs = parsed.endPositions[i];
       const absolutePos = relativePos >= 0 ? setStartIdx + relativePos : -1;
-      const absoluteEndPos = relativeEndPos >= 0 ? setStartIdx + relativeEndPos : -1;
+      const abslEndPs = rltvEndPs >= 0 ? setStartIdx + rltvEndPs : -1;
       valueRows.push({
         values: [columns[i]],
         position: absolutePos,
         valuePositions: [absolutePos],
-        valueEndPositions: [absoluteEndPos],
+        valueEndPositions: [abslEndPs],
       });
     }
     if (valueRows.length > 0) {
@@ -541,20 +551,20 @@ export const findUpdateStatements = function* (text: string): Generator<ParsedIn
 };
 
 // 12. REPLACE INTO 문 검색 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const findReplaceValues = function* (text: string): Generator<ParsedInsert> {
+export const fndRplcVals = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
-  REPLACE_VALUES_REGEX.lastIndex = 0;
+  RPLC_VALS_RE.lastIndex = 0;
 
-  match = REPLACE_VALUES_REGEX.exec(text);
+  match = RPLC_VALS_RE.exec(text);
   while (match !== null) {
     const columnsStr = match[1];
-    const valuesStartIdx = match.index + match[0].length;
-    const valueRows = parseValuesBlock(text, valuesStartIdx);
+    const valsStrtIdx = match.index + match[0].length;
+    const valueRows = prsValsBlck(text, valsStrtIdx);
 
     yield {
       columns: parseColumns(columnsStr),
       valueRows: valueRows,
     };
-    match = REPLACE_VALUES_REGEX.exec(text);
+    match = RPLC_VALS_RE.exec(text);
   }
 };

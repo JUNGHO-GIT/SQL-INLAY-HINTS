@@ -34,22 +34,22 @@ const SQL_KEYWORDS = `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOI
   `DISTINCT|PIVOT|UNPIVOT|LATERAL|WINDOW|FETCH|FIRST|LAST|ONLY|ROWS|RANGE|PRECEDING|FOLLOWING|UNBOUNDED|CURRENT|ROW|TIES|EXCLUDE|NO|ACTION|CASCADE|RESTRICT|NULLS|IGNORE|FORCE|STRAIGHT_JOIN`;
 
 // 2. 위험 명령어 (RED #F44747) ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const DANGER_KEYWORDS = `DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE|FLUSH|RESET`;
+const DNGR_KYWR = `DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE|FLUSH|RESET`;
 
 // 3. 주석 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const XML_COMMENT_PATTERN = `<!--[\\s\\S]*?-->`;
-const SQL_COMMENT_PATTERN = `--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`;
+const XML_CMT_PAT = `<!--[\\s\\S]*?-->`;
+const SQL_CMT_PAT = `--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`;
 
 // 4. SQL 문자열/숫자 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 // XML 속성 값(예: id="x")에 영향을 줄이기 위해 문자열은 단일 인용부호만 처리
-const STRING_PATTERN = `'(?:''|[^'])*'`;
-const NUMBER_PATTERN = `\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\b`;
+const STR_PAT = `'(?:''|[^'])*'`;
+const NMBR_PAT = `\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\b`;
 
 // 5. XML 태그 영역 (<...>) 제외 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-const XML_TAG_PATTERN = `<[\\s\\S]*?>`;
+const XML_TG_PAT = `<[\\s\\S]*?>`;
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-const createDecorationType = (color: string | vscode.ThemeColor, bold=false): vscode.TextEditorDecorationType => {
+const crtDcrtTyp = (color: string | vscode.ThemeColor, bold=false): vscode.TextEditorDecorationType => {
   const rs = vscode.window.createTextEditorDecorationType({
     color: color,
     fontWeight: bold ? `bold` : `normal`,
@@ -58,9 +58,9 @@ const createDecorationType = (color: string | vscode.ThemeColor, bold=false): vs
 };
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
-let keywordGroups: KeywordGroup[] = [];
+let kywrGrps: KeywordGroup[] = [];
 let activeEditor: vscode.TextEditor | undefined;
-let decorationCache: DecorationCache | undefined;
+let dcrtCch: DecorationCache | undefined;
 let timeout: ReturnType<typeof setTimeout> | undefined;
 
 // 4. 설정값 조회 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
@@ -71,94 +71,94 @@ const getConfig = <T>(key: string, defaultValue: T): T => {
 };
 
 // 4-1. 문서 길이 계산 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-const getDocumentLength = (document: vscode.TextDocument): number => {
+const gtDocLen = (document: vscode.TextDocument): number => {
   const lastLine = document.lineAt(document.lineCount - 1);
   const rs = document.offsetAt(lastLine.range.end);
   return rs;
 };
 
 // 4-2. 데코레이션 제거 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-const clearDecorations = (editor: vscode.TextEditor): void => {
-  for (const group of [...keywordGroups, ...xmlKeywordGroups, ...sqlKeywordGroups]) {
+const clrDcrt = (editor: vscode.TextEditor): void => {
+  for (const group of [...kywrGrps, ...xmlKywrGrps, ...sqlKywrGrps]) {
     editor.setDecorations(group.decorationType, []);
   }
 };
 
 // 5. 데코레이터 초기화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-let xmlKeywordGroups: KeywordGroup[] = [];
-let sqlKeywordGroups: KeywordGroup[] = [];
+let xmlKywrGrps: KeywordGroup[] = [];
+let sqlKywrGrps: KeywordGroup[] = [];
 
-const initDecorators = (): void => {
-  keywordGroups.forEach((group) => {
+const intDcrt = (): void => {
+  kywrGrps.forEach((group) => {
     group.decorationType.dispose();
   });
-  xmlKeywordGroups.forEach((group) => {
+  xmlKywrGrps.forEach((group) => {
     group.decorationType.dispose();
   });
-  sqlKeywordGroups.forEach((group) => {
+  sqlKywrGrps.forEach((group) => {
     group.decorationType.dispose();
   });
 
   // 대문자만 매칭하기 위해 'g' 플래그만 사용 (i 플래그 제거)
   // \b 단어 경계로 완전한 단어만 매칭
   const commentColor = getConfig<string>(`commentColor`, `#ffff00`);
-  const commentColor2 = getConfig<string>(`commentColor2`, `#5d9b5d`);
+  const cmtClr2 = getConfig<string>(`commentColor2`, `#5d9b5d`);
   const stringColor = getConfig<string>(`stringColor`, `#CE9178`);
   const numberColor = getConfig<string>(`numberColor`, `#B5CEA8`);
 
   // 공통 키워드 그룹
-  keywordGroups = [
+  kywrGrps = [
     {
-      pattern: new RegExp(`\\b(${DANGER_KEYWORDS})\\b`, `g`),
-      decorationType: createDecorationType(`#F44747`, true),
+      pattern: new RegExp(`\\b(${DNGR_KYWR})\\b`, `g`),
+      decorationType: crtDcrtTyp(`#F44747`, true),
       useExclusions: true,
       exclusionKind: `standard`,
     },
     {
       pattern: new RegExp(`\\b(${SQL_KEYWORDS})\\b`, `g`),
-      decorationType: createDecorationType(`#B77ECA`, true),
+      decorationType: crtDcrtTyp(`#B77ECA`, true),
       useExclusions: true,
       exclusionKind: `standard`,
     },
     {
-      pattern: new RegExp(STRING_PATTERN, `g`),
-      decorationType: createDecorationType(stringColor),
+      pattern: new RegExp(STR_PAT, `g`),
+      decorationType: crtDcrtTyp(stringColor),
       useExclusions: true,
       exclusionKind: `standard`,
     },
     {
-      pattern: new RegExp(NUMBER_PATTERN, `g`),
-      decorationType: createDecorationType(numberColor),
+      pattern: new RegExp(NMBR_PAT, `g`),
+      decorationType: crtDcrtTyp(numberColor),
       useExclusions: true,
       exclusionKind: `standard`,
     },
   ];
 
   // XML 전용: <!-- --> 노란색, /* */ 와 -- 는 어두운 녹색
-  xmlKeywordGroups = [
+  xmlKywrGrps = [
     {
-      pattern: new RegExp(XML_COMMENT_PATTERN, `g`),
-      decorationType: createDecorationType(commentColor),
+      pattern: new RegExp(XML_CMT_PAT, `g`),
+      decorationType: crtDcrtTyp(commentColor),
     },
     {
-      pattern: new RegExp(SQL_COMMENT_PATTERN, `g`),
-      decorationType: createDecorationType(commentColor2),
+      pattern: new RegExp(SQL_CMT_PAT, `g`),
+      decorationType: crtDcrtTyp(cmtClr2),
       useExclusions: true,
       exclusionKind: `invalidComment`,
     },
   ];
 
   // SQL 전용: /* */ 와 -- 만 노란색, <!-- --> 는 녹색 (허용 안 함)
-  sqlKeywordGroups = [
+  sqlKywrGrps = [
     {
-      pattern: new RegExp(SQL_COMMENT_PATTERN, `g`),
-      decorationType: createDecorationType(commentColor),
+      pattern: new RegExp(SQL_CMT_PAT, `g`),
+      decorationType: crtDcrtTyp(commentColor),
       useExclusions: true,
       exclusionKind: `invalidComment`,
     },
     {
-      pattern: new RegExp(XML_COMMENT_PATTERN, `g`),
-      decorationType: createDecorationType(commentColor2),
+      pattern: new RegExp(XML_CMT_PAT, `g`),
+      decorationType: crtDcrtTyp(cmtClr2),
     },
   ];
 };
@@ -166,28 +166,28 @@ const initDecorators = (): void => {
 // 6. 제외 범위 생성 (주석 + XML 태그) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 type ExclusionRange = { start: number; end: number };
 
-const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
+const bldExclRngs = (text: string, lang: string): ExclusionRange[] => {
   const ranges: ExclusionRange[] = [];
   let match: RegExpExecArray | null;
 
   // XML: <!-- --> 주석 제외
   if (lang === `xml`) {
-    const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
-    match = xmlCommentRegex.exec(text);
+    const xmlCmtRe = new RegExp(XML_CMT_PAT, `g`);
+    match = xmlCmtRe.exec(text);
     while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
-      match = xmlCommentRegex.exec(text);
+      match = xmlCmtRe.exec(text);
     }
   }
   // SQL/XML 공통: /* */ 와 -- 주석 제외
-  const sqlCommentRegex = new RegExp(SQL_COMMENT_PATTERN, `g`);
-  match = sqlCommentRegex.exec(text);
+  const sqlCmtRe = new RegExp(SQL_CMT_PAT, `g`);
+  match = sqlCmtRe.exec(text);
   while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
-    match = sqlCommentRegex.exec(text);
+    match = sqlCmtRe.exec(text);
   }
   if (lang === `xml`) {
-    const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
+    const tagRegex = new RegExp(XML_TG_PAT, `g`);
     match = tagRegex.exec(text);
     while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
@@ -213,20 +213,20 @@ const buildExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
   return merged;
 };
 
-const buildInvalidCommentExclusionRanges = (text: string, lang: string): ExclusionRange[] => {
+const bldInCmExRn = (text: string, lang: string): ExclusionRange[] => {
   const ranges: ExclusionRange[] = [];
   let match: RegExpExecArray | null;
 
   // XML 주석 제외 (<!-- ... --> 내부의 -- 가 SQL 주석으로 오인되지 않도록)
-  const xmlCommentRegex = new RegExp(XML_COMMENT_PATTERN, `g`);
-  match = xmlCommentRegex.exec(text);
+  const xmlCmtRe = new RegExp(XML_CMT_PAT, `g`);
+  match = xmlCmtRe.exec(text);
   while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
-    match = xmlCommentRegex.exec(text);
+    match = xmlCmtRe.exec(text);
   }
   // XML: 태그 영역 제외
   if (lang === `xml`) {
-    const tagRegex = new RegExp(XML_TAG_PATTERN, `g`);
+    const tagRegex = new RegExp(XML_TG_PAT, `g`);
     match = tagRegex.exec(text);
     while (match !== null) {
       ranges.push({ start: match.index, end: match.index + match[0].length });
@@ -234,7 +234,7 @@ const buildInvalidCommentExclusionRanges = (text: string, lang: string): Exclusi
     }
   }
   // 문자열 내부의 -- / /* */ 를 오탐으로 표시하지 않도록 제외 범위에 추가
-  const stringRegex = new RegExp(STRING_PATTERN, `g`);
+  const stringRegex = new RegExp(STR_PAT, `g`);
   match = stringRegex.exec(text);
   while (match !== null) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
@@ -257,7 +257,7 @@ const buildInvalidCommentExclusionRanges = (text: string, lang: string): Exclusi
   return merged;
 };
 
-const isIndexExcluded = (ranges: ExclusionRange[], index: number): boolean => {
+const isIdxExcl = (ranges: ExclusionRange[], index: number): boolean => {
   let lo = 0;
   let hi = ranges.length - 1;
   while (lo <= hi) {
@@ -277,7 +277,7 @@ const isIndexExcluded = (ranges: ExclusionRange[], index: number): boolean => {
 };
 
 // 8. 데코레이션 업데이트 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const updateDecorations = (): void => {
+const updtDcrt = (): void => {
   if (!activeEditor) {
   	return;
   }
@@ -287,39 +287,39 @@ const updateDecorations = (): void => {
   	return;
   }
   const uri = editor.document.uri.toString();
-  const maxDocumentLength = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
-  const documentLength = getDocumentLength(editor.document);
-  const cacheHit = decorationCache?.editor === editor && decorationCache.uri === uri && decorationCache.version === editor.document.version && decorationCache.maxDocumentLength === maxDocumentLength;
+  const mxDocLen = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
+  const docLen = gtDocLen(editor.document);
+  const cacheHit = dcrtCch?.editor === editor && dcrtCch.uri === uri && dcrtCch.version === editor.document.version && dcrtCch.maxDocumentLength === mxDocLen;
   if (cacheHit) {
   	return;
   }
-  if (maxDocumentLength > 0 && documentLength > maxDocumentLength) {
-    clearDecorations(editor);
-    decorationCache = {
+  if (mxDocLen > 0 && docLen > mxDocLen) {
+    clrDcrt(editor);
+    dcrtCch = {
       editor: editor,
-      maxDocumentLength: maxDocumentLength,
+      maxDocumentLength: mxDocLen,
       uri: uri,
       version: editor.document.version,
     };
   	return;
   }
   const text = editor.document.getText();
-  const standardExclusionRanges = buildExclusionRanges(text, lang);
-  const invalidCommentExclusionRanges = buildInvalidCommentExclusionRanges(text, lang);
+  const stndExclRngs = bldExclRngs(text, lang);
+  const invCmExRn = bldInCmExRn(text, lang);
 
   // 언어별 주석 그룹 선택
-  const langSpecificGroups = lang === `xml` ? xmlKeywordGroups : sqlKeywordGroups;
-  const allGroups = [...langSpecificGroups, ...keywordGroups];
+  const lngSpcfGrps = lang === `xml` ? xmlKywrGrps : sqlKywrGrps;
+  const allGroups = [...lngSpcfGrps, ...kywrGrps];
 
   for (const group of allGroups) {
     const decorations: vscode.DecorationOptions[] = [];
     let match: RegExpExecArray | null;
     group.pattern.lastIndex = 0;
-    const exclusionRanges = group.exclusionKind === `invalidComment` ? invalidCommentExclusionRanges : standardExclusionRanges;
+    const exclRngs = group.exclusionKind === `invalidComment` ? invCmExRn : stndExclRngs;
 
     match = group.pattern.exec(text);
     while (match !== null) {
-      if (group.useExclusions && isIndexExcluded(exclusionRanges, match.index)) {
+      if (group.useExclusions && isIdxExcl(exclRngs, match.index)) {
         match = group.pattern.exec(text);
       	continue;
       }
@@ -332,35 +332,35 @@ const updateDecorations = (): void => {
     }
     editor.setDecorations(group.decorationType, decorations);
   }
-  decorationCache = {
+  dcrtCch = {
     editor: editor,
-    maxDocumentLength: maxDocumentLength,
+    maxDocumentLength: mxDocLen,
     uri: uri,
     version: editor.document.version,
   };
 };
 
 // 9. 디바운스 트리거 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-const triggerUpdateDecorations = (throttle=false): void => {
+const trggUpdtDcrt = (throttle=false): void => {
   if (timeout) {
   	clearTimeout(timeout);
     timeout = undefined;
   }
   const delay = throttle ? 500 : 0;
-  timeout = setTimeout(updateDecorations, delay);
+  timeout = setTimeout(updtDcrt, delay);
 };
 
 // 10. SQL 키워드 하이라이팅 등록 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-export const createKeywordDecorator = (): vscode.Disposable[] => {
-  const enableHighlight = getConfig<boolean>(`enableKeywordHighlight`, true);
-  if (!enableHighlight) {
+export const crtKywrDcrt = (): vscode.Disposable[] => {
+  const enblHi = getConfig<boolean>(`enableKeywordHighlight`, true);
+  if (!enblHi) {
   	return [];
   }
-  initDecorators();
+  intDcrt();
   activeEditor = vscode.window.activeTextEditor;
 
   if (activeEditor) {
-  	triggerUpdateDecorations();
+  	trggUpdtDcrt();
   }
   const disposables: vscode.Disposable[] = [];
 
@@ -369,7 +369,7 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       activeEditor = editor;
       if (editor) {
-      	triggerUpdateDecorations();
+      	trggUpdtDcrt();
       }
     }),
   );
@@ -378,7 +378,7 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
   disposables.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document === activeEditor?.document) {
-      	triggerUpdateDecorations(true);
+      	trggUpdtDcrt(true);
       }
     }),
   );
@@ -390,19 +390,19 @@ export const createKeywordDecorator = (): vscode.Disposable[] => {
       	clearTimeout(timeout);
         timeout = undefined;
       }
-      decorationCache = undefined;
-      keywordGroups.forEach((group) => {
+      dcrtCch = undefined;
+      kywrGrps.forEach((group) => {
         group.decorationType.dispose();
       });
-      xmlKeywordGroups.forEach((group) => {
+      xmlKywrGrps.forEach((group) => {
         group.decorationType.dispose();
       });
-      sqlKeywordGroups.forEach((group) => {
+      sqlKywrGrps.forEach((group) => {
         group.decorationType.dispose();
       });
-      keywordGroups = [];
-      xmlKeywordGroups = [];
-      sqlKeywordGroups = [];
+      kywrGrps = [];
+      xmlKywrGrps = [];
+      sqlKywrGrps = [];
     },
   });
 

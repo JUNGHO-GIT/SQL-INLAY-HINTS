@@ -7,4 +7,3 @@
 
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 export { initLogger, logger } from "@scripts/logger";
-export { modal, notify } from "@scripts/notify";

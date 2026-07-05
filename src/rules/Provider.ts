@@ -20,6 +20,14 @@ interface ProviderCache {
 // ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
 class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
   private cache: ProviderCache | undefined;
+  private readonly chngEmt = new vscode.EventEmitter<void>();
+  readonly onDidChangeInlayHints = this.chngEmt.event;
+
+  // 0. 설정 변경 시 힌트 갱신 요청 ――――――――――――――――――――――――――――――――――――-
+  refresh(): void {
+    this.cache = undefined;
+    this.chngEmt.fire();
+  }
 
   // 1. InlayHints 제공 메인 함수 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
   async provideInlayHints(document: vscode.TextDocument, range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
@@ -172,6 +180,15 @@ export const crtInHnPr = (): vscode.Disposable[] => {
   // MyBatis XML 옵션 확인 후 등록
   const enableXml = getConfig<boolean>(`enableXml`, true);
   enableXml && disposables.push(rgstXmlProv(provider));
+
+  // 설정 변경 시 힌트 재계산 트리거
+  disposables.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(`SQL-Inlay-Hints`)) {
+        provider.refresh();
+      }
+    }),
+  );
 
   return disposables;
 };

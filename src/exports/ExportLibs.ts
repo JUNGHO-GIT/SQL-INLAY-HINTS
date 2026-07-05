@@ -6,8 +6,4 @@
  */
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
-export { default as fs } from "node:fs";
-export { default as path } from "node:path";
-export { TextDecoder } from "node:util";
-export { gtModWthCch as getModuleWithCache, stExtPth as setExtensionPath } from "@scripts/modules";
 export { default as vscode } from "vscode";

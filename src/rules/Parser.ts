@@ -13,6 +13,7 @@ const INSR_SLCT_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s
 const UPDATE_REGEX = /update\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s+set\s+/gi;
 const RPLC_VALS_RE = /replace\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
 const columnsCache: Map<string, string[]> = new Map();
+const CLMN_CCH_MAX = 500;
 
 // 0. SQL 식별자 정규화 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
 const nrmlId = (identifier: string): string => {
@@ -43,7 +44,14 @@ export const parseColumns = (columnsStr: string): string[] => {
   const cached = columnsCache.get(columnsStr);
   const rs = cached ?? columnsStr.split(`,`).map((col) => nrmlId(col));
   if (!cached) {
-  	columnsCache.set(columnsStr, rs);
+    // 캐시 무한 증가 방지: 상한 초과 시 가장 오래된 항목 제거
+    if (columnsCache.size >= CLMN_CCH_MAX) {
+      const oldest = columnsCache.keys().next().value;
+      if (oldest !== undefined) {
+        columnsCache.delete(oldest);
+      }
+    }
+    columnsCache.set(columnsStr, rs);
   }
   return rs;
 };
@@ -316,8 +324,11 @@ const extrSlctClmn = (text: string, startPos: number): string => {
       else if (char === `)`) {
       	parenDepth--;
       }
-      // parenDepth가 0일 때만 FROM 키워드 확인
+      // parenDepth가 0일 때만 FROM 키워드 또는 문장 종료(;) 확인
       else if (parenDepth === 0) {
+        if (char === `;`) {
+        	break;
+        }
         const nextChar = text[pos + 4];
         const isFromStart = (char === `F` || char === `f`) && hasKeywordAt(text, pos, `FROM`);
         if (isFromStart && nextChar !== undefined && (nextChar === `(` || nextChar.trim() === ``)) {

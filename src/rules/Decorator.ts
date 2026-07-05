@@ -103,8 +103,8 @@ const intDcrt = (): void => {
   // \b 단어 경계로 완전한 단어만 매칭
   const commentColor = getConfig<string>(`commentColor`, `#ffff00`);
   const cmtClr2 = getConfig<string>(`commentColor2`, `#5d9b5d`);
-  const stringColor = getConfig<string>(`stringColor`, `#CE9178`);
-  const numberColor = getConfig<string>(`numberColor`, `#B5CEA8`);
+  const stringColor = getConfig<string>(`stringColor`, `#f4d4ae`);
+  const numberColor = getConfig<string>(`numberColor`, `#00FF00`);
 
   // 공통 키워드 그룹
   kywrGrps = [
@@ -379,6 +379,19 @@ export const crtKywrDcrt = (): vscode.Disposable[] => {
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document === activeEditor?.document) {
       	trggUpdtDcrt(true);
+      }
+    }),
+  );
+
+  // 설정 변경 감지 (색상·길이 제한 등) ――――――――――――――――――――――――――――――-
+  disposables.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration(`SQL-Inlay-Hints`)) {
+        intDcrt();
+        dcrtCch = undefined;
+        if (activeEditor) {
+        	trggUpdtDcrt();
+        }
       }
     }),
   );

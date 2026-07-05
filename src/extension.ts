@@ -5,7 +5,7 @@
  * @since 2025-12-8
  */
 
-import { setExtensionPath as stExtPth, type vscode } from "@exportLibs";
+import type { vscode } from "@exportLibs";
 import { createInlayHintsProvider as crtInHnPr, createKeywordDecorator as crtKywrDcrt } from "@exportRules";
 import { initLogger, logger } from "@exportScripts";
 
@@ -13,7 +13,6 @@ import { initLogger, logger } from "@exportScripts";
 export const activate = (context: vscode.ExtensionContext) => {
   // 로거 초기화
   initLogger();
-  stExtPth(context.extensionPath);
   logger(`info`, `SQL-Inlay-Hints is now active!`);
 
   // InlayHints Provider 등록 (SQL + XML)

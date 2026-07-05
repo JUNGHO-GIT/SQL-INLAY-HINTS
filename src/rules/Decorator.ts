@@ -7,7 +7,7 @@
 
 import { vscode } from "@exportLibs";
 
-// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// -------------------------------------------------------------------------------------------------
 interface KeywordGroup {
   decorationType: vscode.TextEditorDecorationType;
   exclusionKind?: `standard` | `invalidComment`;
@@ -22,7 +22,7 @@ interface DecorationCache {
   version: number;
 }
 
-// 1. 일반 SQL 키워드 (PURPLE #B77ECA) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 1. 일반 SQL 키워드 (PURPLE #B77ECA) -----------------------------------------------------------
 const SQL_KEYWORDS = `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|USING|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|AS|DISTINCT|UNION|ALL|EXISTS|AND|OR|NOT|IN|IS|NULL|BETWEEN|LIKE|CASE|WHEN|THEN|ELSE|END|ASC|DESC|DEFAULT|UNIQUE|PRIMARY|FOREIGN|KEY|REFERENCES|INDEX|TABLE|DATABASE|VIEW|CREATE|ALTER|RENAME|REPLACE|` +
   `BEGIN|COMMIT|ROLLBACK|SAVEPOINT|TRANSACTION|START|` +
   `WITH|RECURSIVE|` +
@@ -33,22 +33,22 @@ const SQL_KEYWORDS = `SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|INTO|VALUES|SET|JOI
   `IF|ELSEIF|SHOW|DESCRIBE|EXPLAIN|USE|CALL|PROCEDURE|FUNCTION|TRIGGER|EVENT|SCHEMA|COLLATE|CHARACTER|CHARSET|LOCK|UNLOCK|TEMPORARY|TEMP|MATERIALIZED|MERGE|UPSERT|` +
   `DISTINCT|PIVOT|UNPIVOT|LATERAL|WINDOW|FETCH|FIRST|LAST|ONLY|ROWS|RANGE|PRECEDING|FOLLOWING|UNBOUNDED|CURRENT|ROW|TIES|EXCLUDE|NO|ACTION|CASCADE|RESTRICT|NULLS|IGNORE|FORCE|STRAIGHT_JOIN`;
 
-// 2. 위험 명령어 (RED #F44747) ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 2. 위험 명령어 (RED #F44747) ------------------------------------------------------------------
 const DNGR_KYWR = `DROP|TRUNCATE|GRANT|REVOKE|KILL|SHUTDOWN|PURGE|FLUSH|RESET`;
 
-// 3. 주석 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 3. 주석 패턴 ---------------------------------------------------------------------------------
 const XML_CMT_PAT = `<!--[\\s\\S]*?-->`;
 const SQL_CMT_PAT = `--[^\\r\\n]*|/\\*[\\s\\S]*?\\*/`;
 
-// 4. SQL 문자열/숫자 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 4. SQL 문자열/숫자 패턴 ---------------------------------------------------------------------
 // XML 속성 값(예: id="x")에 영향을 줄이기 위해 문자열은 단일 인용부호만 처리
 const STR_PAT = `'(?:''|[^'])*'`;
 const NMBR_PAT = `\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\b`;
 
-// 5. XML 태그 영역 (<...>) 제외 패턴 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// 5. XML 태그 영역 (<...>) 제외 패턴 ----------------------------------------------------------
 const XML_TG_PAT = `<[\\s\\S]*?>`;
 
-// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// -------------------------------------------------------------------------------------------------
 const crtDcrtTyp = (color: string | vscode.ThemeColor, bold=false): vscode.TextEditorDecorationType => {
   const rs = vscode.window.createTextEditorDecorationType({
     color: color,
@@ -57,34 +57,34 @@ const crtDcrtTyp = (color: string | vscode.ThemeColor, bold=false): vscode.TextE
   return rs;
 };
 
-// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// -------------------------------------------------------------------------------------------------
 let kywrGrps: KeywordGroup[] = [];
 let activeEditor: vscode.TextEditor | undefined;
 let dcrtCch: DecorationCache | undefined;
 let timeout: ReturnType<typeof setTimeout> | undefined;
 
-// 4. 설정값 조회 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 4. 설정값 조회 --------------------------------------------------------------------------------
 const getConfig = <T>(key: string, defaultValue: T): T => {
   const config = vscode.workspace.getConfiguration(`SQL-Inlay-Hints`);
   const rs = config.get<T>(key, defaultValue);
   return rs;
 };
 
-// 4-1. 문서 길이 계산 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 4-1. 문서 길이 계산 --------------------------------------------------------------------
 const gtDocLen = (document: vscode.TextDocument): number => {
   const lastLine = document.lineAt(document.lineCount - 1);
   const rs = document.offsetAt(lastLine.range.end);
   return rs;
 };
 
-// 4-2. 데코레이션 제거 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 4-2. 데코레이션 제거 ----------------------------------------------------------------------
 const clrDcrt = (editor: vscode.TextEditor): void => {
   for (const group of [...kywrGrps, ...xmlKywrGrps, ...sqlKywrGrps]) {
     editor.setDecorations(group.decorationType, []);
   }
 };
 
-// 5. 데코레이터 초기화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 5. 데코레이터 초기화 --------------------------------------------------------------------------
 let xmlKywrGrps: KeywordGroup[] = [];
 let sqlKywrGrps: KeywordGroup[] = [];
 
@@ -163,7 +163,7 @@ const intDcrt = (): void => {
   ];
 };
 
-// 6. 제외 범위 생성 (주석 + XML 태그) ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 6. 제외 범위 생성 (주석 + XML 태그) -----------------------------------------------------------
 type ExclusionRange = { start: number; end: number };
 
 const bldExclRngs = (text: string, lang: string): ExclusionRange[] => {
@@ -276,7 +276,7 @@ const isIdxExcl = (ranges: ExclusionRange[], index: number): boolean => {
   return false;
 };
 
-// 8. 데코레이션 업데이트 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 8. 데코레이션 업데이트 ------------------------------------------------------------------------
 const updtDcrt = (): void => {
   if (!activeEditor) {
   	return;
@@ -340,7 +340,7 @@ const updtDcrt = (): void => {
   };
 };
 
-// 9. 디바운스 트리거 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 9. 디바운스 트리거 ---------------------------------------------------------------------------
 const trggUpdtDcrt = (throttle=false): void => {
   if (timeout) {
   	clearTimeout(timeout);
@@ -350,7 +350,7 @@ const trggUpdtDcrt = (throttle=false): void => {
   timeout = setTimeout(updtDcrt, delay);
 };
 
-// 10. SQL 키워드 하이라이팅 등록 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 10. SQL 키워드 하이라이팅 등록 ---------------------------------------------------------------
 export const crtKywrDcrt = (): vscode.Disposable[] => {
   const enblHi = getConfig<boolean>(`enableKeywordHighlight`, true);
   if (!enblHi) {
@@ -383,7 +383,7 @@ export const crtKywrDcrt = (): vscode.Disposable[] => {
     }),
   );
 
-  // 설정 변경 감지 (색상·길이 제한 등) ――――――――――――――――――――――――――――――-
+  // 설정 변경 감지 (색상·길이 제한 등) -------------------------------
   disposables.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration(`SQL-Inlay-Hints`)) {

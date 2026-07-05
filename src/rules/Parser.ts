@@ -7,7 +7,7 @@
 
 import type { ParsedInsert, ParsedRowValues as PrsdRwVals, ValueRow } from "@exportTypes";
 
-// ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// -------------------------------------------------------------------------------------------------
 const INSR_VALS_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
 const INSR_SLCT_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*select\s+/gi;
 const UPDATE_REGEX = /update\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s+set\s+/gi;
@@ -15,7 +15,7 @@ const RPLC_VALS_RE = /replace\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\
 const columnsCache: Map<string, string[]> = new Map();
 const CLMN_CCH_MAX = 500;
 
-// 0. SQL 식별자 정규화 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 0. SQL 식별자 정규화 -------------------------------------------------------------------------
 const nrmlId = (identifier: string): string => {
   const trimmed = identifier.trim();
   const hsDblQts = trimmed.startsWith(`"`) && trimmed.endsWith(`"`);
@@ -25,7 +25,7 @@ const nrmlId = (identifier: string): string => {
   return rs;
 };
 
-// 0-1. 키워드 위치 검사 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 0-1. 키워드 위치 검사 -----------------------------------------------------------------------
 const hasKeywordAt = (text: string, index: number, keyword: string): boolean => {
   let matches = index + keyword.length <= text.length;
   let offset = 0;
@@ -39,7 +39,7 @@ const hasKeywordAt = (text: string, index: number, keyword: string): boolean => 
   return matches;
 };
 
-// 1. 컬럼 문자열 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 1. 컬럼 문자열 파싱 ---------------------------------------------------------------------------
 export const parseColumns = (columnsStr: string): string[] => {
   const cached = columnsCache.get(columnsStr);
   const rs = cached ?? columnsStr.split(`,`).map((col) => nrmlId(col));
@@ -56,7 +56,7 @@ export const parseColumns = (columnsStr: string): string[] => {
   return rs;
 };
 
-// 2. VALUES 행의 각 값과 위치 파싱 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 2. VALUES 행의 각 값과 위치 파싱 --------------------------------------------------------------
 export const prsRwVals = (rowStr: string): PrsdRwVals => {
   const values: string[] = [];
   const positions: number[] = [];
@@ -135,7 +135,7 @@ export const prsRwVals = (rowStr: string): PrsdRwVals => {
   return rs;
 };
 
-// 3. SELECT 컬럼 표현식 파싱 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 3. SELECT 컬럼 표현식 파싱 --------------------------------------------------------------------
 export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
   const values: string[] = [];
   const positions: number[] = [];
@@ -214,7 +214,7 @@ export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
   return rs;
 };
 
-// 4. VALUES 블록 전체 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// 4. VALUES 블록 전체 파싱 ----------------------------------------------------------------------
 const prsValsBlck = (text: string, startPos: number): ValueRow[] => {
   const valueRows: ValueRow[] = [];
   let pos = startPos;
@@ -274,7 +274,7 @@ const prsValsBlck = (text: string, startPos: number): ValueRow[] => {
   return valueRows;
 };
 
-// 5. INSERT INTO ... VALUES 문 검색 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// 5. INSERT INTO ... VALUES 문 검색 -------------------------------------------------------------
 export const fndInsrVals = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
   INSR_VALS_RE.lastIndex = 0;
@@ -293,7 +293,7 @@ export const fndInsrVals = function* (text: string): Generator<ParsedInsert> {
   }
 };
 
-// 6. SELECT 컬럼 영역 추출 (FROM 전까지, 서브쿼리 고려) ―――――――――――――――――――――――――――――――――――――――--
+// 6. SELECT 컬럼 영역 추출 (FROM 전까지, 서브쿼리 고려) -----------------------------------------
 const extrSlctClmn = (text: string, startPos: number): string => {
   let pos = startPos;
   let parenDepth = 0;
@@ -342,7 +342,7 @@ const extrSlctClmn = (text: string, startPos: number): string => {
   return rs;
 };
 
-// 7. INSERT INTO ... SELECT 문 검색 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// 7. INSERT INTO ... SELECT 문 검색 -------------------------------------------------------------
 export const fndInsrSlct = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
   INSR_SLCT_RE.lastIndex = 0;
@@ -381,7 +381,7 @@ export const fndInsrSlct = function* (text: string): Generator<ParsedInsert> {
   }
 };
 
-// 8. INSERT VALUES 유효성 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 8. INSERT VALUES 유효성 검사 ------------------------------------------------------------------
 export const isVldInsr = (parsed: ParsedInsert): boolean => {
   const hasRows = parsed.valueRows.length > 0;
   const allMatch = parsed.valueRows.every((row) => row.values.length === parsed.columns.length);
@@ -389,13 +389,13 @@ export const isVldInsr = (parsed: ParsedInsert): boolean => {
   return rs;
 };
 
-// 9. INSERT SELECT 유효성 검사 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 9. INSERT SELECT 유효성 검사 ------------------------------------------------------------------
 export const isVlInSl = (parsed: ParsedInsert): boolean => {
   const rs = parsed.valueRows.length === parsed.columns.length;
   return rs;
 };
 
-// 10. UPDATE SET 절 파싱 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 10. UPDATE SET 절 파싱 -----------------------------------------------------------------------
 const prsUpdtSt = (setStr: string): PrsdRwVals => {
   const columns: string[] = [];
   const values: string[] = [];
@@ -488,7 +488,7 @@ const prsUpdtSt = (setStr: string): PrsdRwVals => {
   return rs;
 };
 
-// 11. UPDATE 문 검색 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 11. UPDATE 문 검색 ---------------------------------------------------------------------------
 export const fndUpdtSttm = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
   UPDATE_REGEX.lastIndex = 0;
@@ -561,7 +561,7 @@ export const fndUpdtSttm = function* (text: string): Generator<ParsedInsert> {
   }
 };
 
-// 12. REPLACE INTO 문 검색 ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+// 12. REPLACE INTO 문 검색 ---------------------------------------------------------------------
 export const fndRplcVals = function* (text: string): Generator<ParsedInsert> {
   let match: RegExpExecArray | null;
   RPLC_VALS_RE.lastIndex = 0;

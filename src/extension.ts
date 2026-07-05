@@ -9,7 +9,7 @@ import type { vscode } from "@exportLibs";
 import { createInlayHintsProvider as crtInHnPr, createKeywordDecorator as crtKywrDcrt } from "@exportRules";
 import { initLogger, logger } from "@exportScripts";
 
-// 1. 확장 활성화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――--
+// 1. 확장 활성화 --------------------------------------------------------------------------------
 export const activate = (context: vscode.ExtensionContext) => {
   // 로거 초기화
   initLogger();
@@ -30,7 +30,7 @@ export const activate = (context: vscode.ExtensionContext) => {
   logger(`info`, `Keyword Decorator registered (${decorators.length} decorators)`);
 };
 
-// 2. 확장 비활성화 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――-
+// 2. 확장 비활성화 -------------------------------------------------------------------------------
 export const deactivate = () => {
   logger(`info`, `SQL-Inlay-Hints is now deactivated`);
 };

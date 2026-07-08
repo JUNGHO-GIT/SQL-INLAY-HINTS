@@ -9,7 +9,7 @@ import type { ParsedInsert, ParsedRowValues as PrsdRwVals, ValueRow } from "@exp
 
 // -------------------------------------------------------------------------------------------------
 const INSR_VALS_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
-const INSR_SLCT_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*select\s+/gi;
+const INSR_SLCT_HEAD_RE = /insert\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)/gi;
 const UPDATE_REGEX = /update\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s+set\s+/gi;
 const RPLC_VALS_RE = /replace\s+into\s+(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))*\s*\(([\S\s]*?)\)\s*values\s*/gi;
 const columnsCache: Map<string, string[]> = new Map();
@@ -37,6 +37,105 @@ const hasKeywordAt = (text: string, index: number, keyword: string): boolean => 
     offset++;
   }
   return matches;
+};
+
+// 0-2. SQL 주석과 XML 태그 마스킹 --------------------------------------------------------------
+const maskSqlTrivia = (text: string): string => {
+  const chars = [...text];
+  let inString = false;
+  let stringChar = ``;
+
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    if (inString && char === stringChar && chars[i + 1] === char) {
+      i++;
+      continue;
+    }
+    if (inString && char === stringChar) {
+      inString = false;
+      stringChar = ``;
+      continue;
+    }
+    if (!inString && (char === `'` || char === `"` || char === "`")) {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+    if (!inString && char === `-` && chars[i + 1] === `-`) {
+      while (i < chars.length && chars[i] !== `\n` && chars[i] !== `\r`) {
+        chars[i] = ` `;
+        i++;
+      }
+      i--;
+      continue;
+    }
+    if (!inString && char === `/` && chars[i + 1] === `*`) {
+      chars[i] = ` `;
+      chars[i + 1] = ` `;
+      i += 2;
+      while (i < chars.length && !(chars[i] === `*` && chars[i + 1] === `/`)) {
+        if (chars[i] !== `\n` && chars[i] !== `\r`) {
+          chars[i] = ` `;
+        }
+        i++;
+      }
+      if (i < chars.length) {
+        chars[i] = ` `;
+        chars[i + 1] = ` `;
+        i++;
+      }
+    }
+  }
+  const masked = chars.join(``).replace(/<\/?(?:bind|choose|delete|foreach|if|include|insert|otherwise|script|select|set|trim|update|when|where)\b[^>]*>|<!\[CDATA\[|\]\]>/gi, (tag) => tag.replace(/[^\r\n]/g, ` `));
+  return masked;
+};
+
+// 0-3. 최상위 SELECT 위치 검색 -----------------------------------------------------------------
+const findTopLevelSelects = (text: string, startPos: number): number[] => {
+  const starts: number[] = [];
+  let parenDepth = 0;
+  let inString = false;
+  let stringChar = ``;
+
+  for (let pos = startPos; pos < text.length; pos++) {
+    const char = text[pos];
+    if (inString && char === stringChar && text[pos + 1] === char) {
+      pos++;
+      continue;
+    }
+    if ((char === `'` || char === `"` || char === "`") && !inString) {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+    if (inString && char === stringChar) {
+      inString = false;
+      stringChar = ``;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === `(`) {
+      parenDepth++;
+      continue;
+    }
+    if (char === `)`) {
+      parenDepth--;
+      continue;
+    }
+    if (parenDepth === 0 && char === `;`) {
+      break;
+    }
+    const prev = pos > 0 ? text[pos - 1] : ``;
+    const next = text[pos + 6] ?? ``;
+    const hasBoundary = !/[\w$]/.test(prev) && !/[\w$]/.test(next);
+    if (parenDepth === 0 && hasBoundary && hasKeywordAt(text, pos, `SELECT`)) {
+      starts.push(pos + 6);
+      pos += 5;
+    }
+  }
+  return starts;
 };
 
 // 1. 컬럼 문자열 파싱 ---------------------------------------------------------------------------
@@ -137,6 +236,7 @@ export const prsRwVals = (rowStr: string): PrsdRwVals => {
 
 // 3. SELECT 컬럼 표현식 파싱 --------------------------------------------------------------------
 export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
+  const masked = maskSqlTrivia(selectStr);
   const values: string[] = [];
   const positions: number[] = [];
   const endPositions: number[] = [];
@@ -148,11 +248,12 @@ export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
   let parenDepth = 0;
 
   for (let i = 0; i < selectStr.length; i++) {
-    const char = selectStr[i];
+    const char = masked[i];
+    const sourceChar = selectStr[i];
 
     // SQL 표준 이스케이프 처리
     if (inString && char === stringChar && selectStr[i + 1] === char) {
-    	current += char + selectStr[i + 1];
+	current += sourceChar + selectStr[i + 1];
       currentEnd = i + 1;
       i++;
       continue;
@@ -175,13 +276,13 @@ export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
       }
       inString = true;
       stringChar = char;
-      current += char;
+      current += sourceChar;
       currentEnd = i;
     }
     else if (isStringEnd) {
     	inString = false;
       stringChar = ``;
-      current += char;
+      current += sourceChar;
       currentEnd = i;
     }
     else {
@@ -198,7 +299,7 @@ export const prsSlctClmn = (selectStr: string): PrsdRwVals => {
       if (!inString && char === `)`) {
       	parenDepth--;
       }
-      current += char;
+      current += sourceChar;
     }
   }
   if (current.trim()) {
@@ -295,13 +396,14 @@ export const fndInsrVals = function* (text: string): Generator<ParsedInsert> {
 
 // 6. SELECT 컬럼 영역 추출 (FROM 전까지, 서브쿼리 고려) -----------------------------------------
 const extrSlctClmn = (text: string, startPos: number): string => {
+  const masked = maskSqlTrivia(text);
   let pos = startPos;
   let parenDepth = 0;
   let inString = false;
   let stringChar = ``;
 
   while (pos < text.length) {
-    const char = text[pos];
+    const char = masked[pos];
 
     // SQL 이스케이프 처리
     if (inString && char === stringChar && text[pos + 1] === char) {
@@ -329,9 +431,11 @@ const extrSlctClmn = (text: string, startPos: number): string => {
         if (char === `;`) {
         	break;
         }
-        const nextChar = text[pos + 4];
-        const isFromStart = (char === `F` || char === `f`) && hasKeywordAt(text, pos, `FROM`);
-        if (isFromStart && nextChar !== undefined && (nextChar === `(` || nextChar.trim() === ``)) {
+        const prevChar = pos > 0 ? masked[pos - 1] : ``;
+        const isBoundary = !/[\w$]/.test(prevChar);
+        const isFromStart = isBoundary && hasKeywordAt(masked, pos, `FROM`) && !/[\w$]/.test(masked[pos + 4] ?? ``);
+        const isSetStart = isBoundary && [`UNION`, `INTERSECT`, `EXCEPT`].some((keyword) => hasKeywordAt(masked, pos, keyword) && !/[\w$]/.test(masked[pos + keyword.length] ?? ``));
+        if (isFromStart || isSetStart) {
         	break;
         }
       }
@@ -344,40 +448,42 @@ const extrSlctClmn = (text: string, startPos: number): string => {
 
 // 7. INSERT INTO ... SELECT 문 검색 -------------------------------------------------------------
 export const fndInsrSlct = function* (text: string): Generator<ParsedInsert> {
+  const masked = maskSqlTrivia(text);
   let match: RegExpExecArray | null;
-  INSR_SLCT_RE.lastIndex = 0;
+  INSR_SLCT_HEAD_RE.lastIndex = 0;
 
-  match = INSR_SLCT_RE.exec(text);
+  match = INSR_SLCT_HEAD_RE.exec(masked);
   while (match !== null) {
-    const columnsStr = match[1];
+    const columnsOffset = match[0].indexOf(match[1]);
+    const columnsStr = text.slice(match.index + columnsOffset, match.index + columnsOffset + match[1].length);
     const columns = parseColumns(columnsStr);
-    const slctContStrt = match.index + match[0].length;
+    const searchStart = match.index + match[0].length;
+    const selectStarts = findTopLevelSelects(masked, searchStart);
 
-    // SELECT 뒤부터 FROM 전까지 파싱 (서브쿼리 고려)
-    const selectStr = extrSlctClmn(text, slctContStrt);
-    const parsed = prsSlctClmn(selectStr);
+    for (const slctContStrt of selectStarts) {
+      const selectStr = extrSlctClmn(text, slctContStrt);
+      const parsed = prsSlctClmn(selectStr);
+      const valueRows: ValueRow[] = parsed.values.map((value, i) => {
+        const relativePos = parsed.positions[i];
+        const rltvEndPs = parsed.endPositions[i];
+        const absolutePos = relativePos >= 0 ? slctContStrt + relativePos : -1;
+        const abslEndPs = rltvEndPs >= 0 ? slctContStrt + rltvEndPs : -1;
+        return {
+          values: [value],
+          position: absolutePos,
+          valuePositions: [absolutePos],
+          valueEndPositions: [abslEndPs],
+        };
+      });
 
-    const valueRows: ValueRow[] = parsed.values.map((value, i) => {
-      const relativePos = parsed.positions[i];
-      const rltvEndPs = parsed.endPositions[i];
-      const absolutePos = relativePos >= 0 ? slctContStrt + relativePos : -1;
-      const abslEndPs = rltvEndPs >= 0 ? slctContStrt + rltvEndPs : -1;
-      const rs: ValueRow = {
-        values: [value],
-        position: absolutePos,
-        valuePositions: [absolutePos],
-        valueEndPositions: [abslEndPs],
-      };
-      return rs;
-    });
-
-    if (valueRows.length === columns.length) {
-      yield {
-        columns: columns,
-        valueRows: valueRows,
-      };
+      if (valueRows.length === columns.length) {
+        yield {
+          columns: columns,
+          valueRows: valueRows,
+        };
+      }
     }
-    match = INSR_SLCT_RE.exec(text);
+    match = INSR_SLCT_HEAD_RE.exec(masked);
   }
 };
 

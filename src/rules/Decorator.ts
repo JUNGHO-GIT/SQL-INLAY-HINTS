@@ -286,6 +286,12 @@ const updtDcrt = (): void => {
   if (lang !== `sql` && lang !== `xml`) {
   	return;
   }
+  const enabled = getConfig<boolean>(`enableKeywordHighlight`, true);
+  if (!enabled) {
+    clrDcrt(editor);
+    dcrtCch = undefined;
+	return;
+  }
   const uri = editor.document.uri.toString();
   const mxDocLen = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
   const docLen = gtDocLen(editor.document);
@@ -352,10 +358,6 @@ const trggUpdtDcrt = (throttle=false): void => {
 
 // 10. SQL 키워드 하이라이팅 등록 ---------------------------------------------------------------
 export const crtKywrDcrt = (): vscode.Disposable[] => {
-  const enblHi = getConfig<boolean>(`enableKeywordHighlight`, true);
-  if (!enblHi) {
-  	return [];
-  }
   intDcrt();
   activeEditor = vscode.window.activeTextEditor;
 

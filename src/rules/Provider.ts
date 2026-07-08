@@ -31,6 +31,13 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
 
   // 1. InlayHints 제공 메인 함수 ----------------------------------------------------------------
   async provideInlayHints(document: vscode.TextDocument, range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
+    const enabled = getConfig<boolean>(`enableInlayHints`, true);
+    const langEnabled = document.languageId === `sql`
+      ? getConfig<boolean>(`enableSql`, true)
+      : getConfig<boolean>(`enableXml`, true);
+    if (!enabled || !langEnabled) {
+      return [];
+    }
     const uri = document.uri.toString();
     const mxDocLen = Math.max(0, getConfig<number>(`maxDocumentLength`, 300_000));
     const docLen = this.getDocumentLength(document);
@@ -97,56 +104,57 @@ class SqlInsertInlayHintsProvider implements vscode.InlayHintsProvider {
     }
     return hints;
   }
-  // 2. VALUES 구문 힌트 생성 -------------------------------------------------------------------
+
+  // 4. VALUES 구문 힌트 생성 -------------------------------------------------------------------
   private createHintsForValues(document: vscode.TextDocument, parsed: ParsedInsert, hints: vscode.InlayHint[]): void {
     parsed.valueRows.forEach((row) => {
       parsed.columns.forEach((column, i) => {
-        const valuePos = row.valuePositions[i];
-        if (valuePos < 0) {
+        const valueEndPos = row.valueEndPositions[i];
+        if (valueEndPos < 0) {
         	return;
         }
-        const position = document.positionAt(valuePos);
-        const hint = new vscode.InlayHint(position, `${column}: `, vscode.InlayHintKind.Parameter);
-        hint.paddingRight = true;
+        const position = document.positionAt(valueEndPos);
+        const hint = new vscode.InlayHint(position, `: ${column}`, vscode.InlayHintKind.Parameter);
+        hint.paddingLeft = true;
         hints.push(hint);
       });
     });
   }
-  // 3. SELECT 구문 힌트 생성 -------------------------------------------------------------------
+  // 5. SELECT 구문 힌트 생성 -------------------------------------------------------------------
   private createHintsForSelect(document: vscode.TextDocument, parsed: ParsedInsert, hints: vscode.InlayHint[]): void {
     parsed.valueRows.forEach((row, i) => {
-      const valuePos = row.valuePositions[0];
-      if (valuePos < 0) {
+      const valueEndPos = row.valueEndPositions[0];
+      if (valueEndPos < 0) {
       	return;
       }
-      const position = document.positionAt(valuePos);
-      const hint = new vscode.InlayHint(position, `${parsed.columns[i]}: `, vscode.InlayHintKind.Parameter);
-      hint.paddingRight = true;
+      const position = document.positionAt(valueEndPos);
+      const hint = new vscode.InlayHint(position, `: ${parsed.columns[i]}`, vscode.InlayHintKind.Parameter);
+      hint.paddingLeft = true;
       hints.push(hint);
     });
   }
-  // 4. UPDATE SET 구문 힌트 생성 -------------------------------------------------------------
+  // 6. UPDATE SET 구문 힌트 생성 -------------------------------------------------------------
   private createHintsForUpdate(document: vscode.TextDocument, parsed: ParsedInsert, hints: vscode.InlayHint[]): void {
     parsed.valueRows.forEach((row, i) => {
-      const valuePos = row.valuePositions[0];
-      if (valuePos < 0) {
+      const valueEndPos = row.valueEndPositions[0];
+      if (valueEndPos < 0) {
       	return;
       }
-      const position = document.positionAt(valuePos);
-      const hint = new vscode.InlayHint(position, `${parsed.columns[i]} = `, vscode.InlayHintKind.Parameter);
-      hint.paddingRight = true;
+      const position = document.positionAt(valueEndPos);
+      const hint = new vscode.InlayHint(position, `: ${parsed.columns[i]}`, vscode.InlayHintKind.Parameter);
+      hint.paddingLeft = true;
       hints.push(hint);
     });
   }
 }
-// 4. 설정값 조회 --------------------------------------------------------------------------------
+// 7. 설정값 조회 --------------------------------------------------------------------------------
 const getConfig = <T>(key: string, defaultValue: T): T => {
   const config = vscode.workspace.getConfiguration(`SQL-Inlay-Hints`);
   const rs = config.get<T>(key, defaultValue);
   return rs;
 };
 
-// 5. SQL 파일 Provider 등록 ---------------------------------------------------------------------
+// 8. SQL 파일 Provider 등록 ---------------------------------------------------------------------
 const rgstSqlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
   const rs = vscode.languages.registerInlayHintsProvider(
     {
@@ -157,7 +165,7 @@ const rgstSqlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable =
   return rs;
 };
 
-// 6. MyBatis XML Provider 등록 ------------------------------------------------------------------
+// 9. MyBatis XML Provider 등록 ------------------------------------------------------------------
 const rgstXmlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable => {
   const rs = vscode.languages.registerInlayHintsProvider(
     {
@@ -168,18 +176,10 @@ const rgstXmlProv = (provider: SqlInsertInlayHintsProvider): vscode.Disposable =
   return rs;
 };
 
-// 7. InlayHints Provider 등록 (메인) ------------------------------------------------------------
+// 10. InlayHints Provider 등록 (메인) -----------------------------------------------------------
 export const crtInHnPr = (): vscode.Disposable[] => {
   const provider = new SqlInsertInlayHintsProvider();
-  const disposables: vscode.Disposable[] = [];
-
-  // SQL 파일 옵션 확인 후 등록
-  const enableSql = getConfig<boolean>(`enableSql`, true);
-  enableSql && disposables.push(rgstSqlProv(provider));
-
-  // MyBatis XML 옵션 확인 후 등록
-  const enableXml = getConfig<boolean>(`enableXml`, true);
-  enableXml && disposables.push(rgstXmlProv(provider));
+  const disposables: vscode.Disposable[] = [rgstSqlProv(provider), rgstXmlProv(provider)];
 
   // 설정 변경 시 힌트 재계산 트리거
   disposables.push(
